@@ -14,49 +14,56 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 
-int start_server(int port) {
-    int server_fd, new_socket;
-    struct sockaddr_in address;
-    int opt = 1;
-    int addrlen = sizeof(address);
 
-    // Create socket file descriptor
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
-        perror("socket failed");
-        exit(EXIT_FAILURE);
-    }
+int start_server(int port, const char *root) {
 
-    // Set socket options
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
+	struct sockaddr_in server_addr;
+	struct sockaddr_in client_addr;
+    int listen_fd, conn_fd;
+    int reuse = 1; 
+
+	// create socket
+	if ((listen_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {  
+		perror("socket failed");
+		exit(EXIT_FAILURE);
+	}
+
+    // allow multiple clients to connect the same address and port
+    if (setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &reuse, sizeof(reuse))) {
         perror("setsockopt");
         exit(EXIT_FAILURE);
     }
 
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(port);
+	// Set the server address and port
+	memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    server_addr.sin_port = htons(port);
+
 
     // Bind the socket to the network address and port
-    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
+    if (bind(listen_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
         perror("bind failed");
         exit(EXIT_FAILURE);
     }
 
     // Start listening for connections
-    if (listen(server_fd, MAX_CLIENTS) < 0) {
+    if (listen(listen_fd, MAX_CLIENTS) == -1) { // MAX_CLIENTS is the maximum length of the queue
         perror("listen");
         exit(EXIT_FAILURE);
     }
 
-    printf("FTP Server listening on port %d\n", port);
+    //printf("FTP Server listening on port %d\n", port);
 
+    int addrlen = sizeof(client_addr); 
     while (1) {
-        if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) {
+		// wait for client's connection -- blocking function
+        if ((conn_fd = accept(listen_fd, (struct sockaddr *)&client_addr, (socklen_t*)&addrlen)) == -1) {
             perror("accept");
             continue;
         }
-
-        // Handle the new connection in a new thread or process
+		
+        // TODO: Handle the new connection in a new thread or process
         handle_client(new_socket);
     }
 
