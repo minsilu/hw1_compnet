@@ -6,6 +6,6 @@
 #define BUFFER_SIZE 1024
 
 #define DEFAULT_ROOT "/tmp"
-#define WELCOME_MESSAGE "220 Welcome to the FTP server.\r\n"
+#define WELCOME_MESSAGE "220 ftp.ssast.org FTP server ready.\r\n"
 
 #endif // CONFIG_H
