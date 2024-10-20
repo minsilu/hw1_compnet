@@ -71,7 +71,7 @@ int start_server(int port, const char *root) {
         } else if (child_pid == 0) {
             // Child process
             close(listen_fd);  // Child doesn't need the listening socket
-            handle_client(conn_fd);
+            handle_client(conn_fd, root);
             close(conn_fd);
             exit(EXIT_SUCCESS);
         } else {

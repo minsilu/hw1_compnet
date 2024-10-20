@@ -4,6 +4,7 @@
 #define DEFAULT_PORT 21
 #define MAX_CLIENTS 10
 #define BUFFER_SIZE 1024
+#define TRANSFER_SPEED 10000
 
 #define DEFAULT_ROOT "/tmp"
 
@@ -30,17 +31,24 @@
 #define ENTERING_PASSIVE_MODE "227 Entering Passive Mode (%s,%d,%d)\r\n"
 
 // File operation messages
-#define FILE_STATUS_OK "150 File status okay; about to open data connection.\r\n"
+#define TRANSFER_NOT_ESTABLISHED "425 Data connection not established.\r\n"
 #define TRANSFER_COMPLETE "226 Transfer complete.\r\n"
+#define TCP_NOT_ESTABLISHED "425 NO TCP connection established.\r\n"
+#define TCP_BROKEN "426 TCP connection was broken; transfer aborted.\r\n"
+#define FILE_NOT_EXIST "550 File does not exist.\r\n"
+#define FILE_NOT_PERMITTED "550 Permission denied.\r\n"
+#define FILE_STATUS_OK "150 Opening BINARY mode data connection for %s.\r\n"
 #define PATHNAME_CREATED "257 \"%s\" created.\r\n"
+#define ACTION_ABORTED "451 Requested action aborted: local error in processing.\r\n"
+#define DISK_ISSUE "450 Disk failure or out of memory.\r\n"
 
 // Mode and type settings
+#define TRANSFER_PORT "200 PORT command successful.\r\n"
+#define TRANSFER_PASV "200 PASV command successful.\r\n"
 #define TYPE_SET_BINARY "200 Type set to I.\r\n"
 #define TYPE_UNKNOWN "200 Unknown type.\r\n"
 
 
-// Error messages for file operations
-#define FILE_UNAVAILABLE "550 File unavailable.\r\n"
-#define ACTION_ABORTED "451 Requested action aborted: local error in processing.\r\n"
+
 
 #endif // CONFIG_H

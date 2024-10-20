@@ -10,12 +10,13 @@
 #include <ctype.h>
 
 
-void handle_client(int client_socket) {
+void handle_client(int client_socket, const char *root) {
     char buffer[BUFFER_SIZE];
     char username[BUFFER_SIZE] = {0};
     // int logged_in = 0;
     // int recv_num = 0;
     SessionState state = STATE_INITIAL;
+    DataConnection data_conn = {MODE_NONE, {0}, root, -1, -1, 0};
 
     // Send welcome message
     send_message(client_socket, WELCOME_MESSAGE);
@@ -72,7 +73,8 @@ void handle_client(int client_socket) {
         } else(state == STATE_LOGGED_IN) {
             if (strcmp(command, "SYST") == 0) handle_syst(client_socket);
             else if(strcmp(command, "TYPE") == 0) handle_type(client_socket, arg);
-            else if(strcmp(command, "PORT") == 0) handle_port(client_socket, arg);
+            else if(strcmp(command, "PORT") == 0) handle_port(client_socket, arg, &data_conn);
+            else if(strcmp(command, "RETR") == 0) handle_retr(client_socket, arg, &data_conn);
             else if(strcmp(command, "PASV") == 0) handle_pasv(client_socket);
             else if (strcmp(command, "QUIT") == 0) {
                 handle_quit(client_socket);
