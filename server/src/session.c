@@ -83,8 +83,9 @@ void handle_client(int client_socket, const char *root) {
             if (strcmp(command, "SYST") == 0) handle_syst(client_socket);
             else if(strcmp(command, "TYPE") == 0) handle_type(client_socket, arg);
             else if(strcmp(command, "PORT") == 0) handle_port(client_socket, arg, &data_conn);
+            else if(strcmp(command, "PASV") == 0) handle_pasv(client_socket, &data_conn);
             else if(strcmp(command, "RETR") == 0) handle_retr(client_socket, arg, &data_conn);
-            //else if(strcmp(command, "PASV") == 0) handle_pasv(client_socket);
+            else if(strcmp(command, "STOR") == 0) handle_stor(client_socket, arg, &data_conn);
             else if (strcmp(command, "QUIT") == 0) {
                 handle_quit(client_socket);
                 break;

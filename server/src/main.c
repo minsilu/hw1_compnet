@@ -5,7 +5,7 @@
 #include <string.h>
 #include <limits.h>
 #include <errno.h>
-
+#include <pthread.h>
 
 int main(int argc, char *argv[]) {
 
