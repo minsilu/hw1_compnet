@@ -26,6 +26,8 @@ void handle_client(int client_socket, const char *root) {
     };
     strncpy(data_conn.root, root, sizeof(data_conn.root) - 1);
     data_conn.root[sizeof(data_conn.root) - 1] = '\0'; 
+    strncpy(data_conn.current_dir, root, sizeof(data_conn.current_dir) - 1);
+    data_conn.current_dir[sizeof(data_conn.current_dir) - 1] = '\0';
 
     // Send welcome message
     send_message(client_socket, WELCOME_MESSAGE);
@@ -56,12 +58,10 @@ void handle_client(int client_socket, const char *root) {
             command[i] = toupper((unsigned char)command[i]);
         }
 
-        // TODO: check quit priority here
-        if (strcmp(command, "QUIT") == 0) {
-            handle_quit(client_socket);
+        if ((strcmp(command, "QUIT") == 0) || (strcmp(command, "ABOR") == 0)) {
+            handle_quit(client_socket, &data_conn);
             break;
-        }
-
+        } 
 
         if (state == STATE_INITIAL){
             if (strcmp(command, "USER") == 0) {
@@ -86,10 +86,9 @@ void handle_client(int client_socket, const char *root) {
             else if(strcmp(command, "PASV") == 0) handle_pasv(client_socket, &data_conn);
             else if(strcmp(command, "RETR") == 0) handle_retr(client_socket, arg, &data_conn);
             else if(strcmp(command, "STOR") == 0) handle_stor(client_socket, arg, &data_conn);
-            else if (strcmp(command, "QUIT") == 0) {
-                handle_quit(client_socket);
-                break;
-            }
+            else if(strcmp(command, "PWD") == 0) handle_pwd(client_socket, &data_conn);
+            else if(strcmp(command, "CWD") == 0) handle_cwd(client_socket, arg, &data_conn);
+            //else if(strcmp(command, "LIST") == 0) handle_list(client_socket, &data_conn);
             else {
                 send_message(client_socket, INVALID_COMMAND);
             }

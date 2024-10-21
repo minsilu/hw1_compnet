@@ -16,6 +16,7 @@
 // Error messages
 #define SYNTAX_ERROR "500 Syntax error, command unrecognized.\r\n"
 #define INVALID_COMMAND "550 Invalid command.\r\n"
+#define INTERNAL_ERROR "500 Internal error.\r\n"
 #define NOT_LOGGED_IN "530 Not logged in.\r\n"
 #define ALREADY_LOGGED_IN "530 Already logged in.\r\n"
 
@@ -29,7 +30,11 @@
 
 // Command responses
 #define SYSTEM_TYPE "215 UNIX Type: L8\r\n"
-
+#define INVALID_PATH "550 Not a valid directory.\r\n"
+#define CWD_FAILED "550 Failed to change directory.\r\n"
+#define PWD_MESSAGE "257 \"%s\" is current directory.\r\n"
+#define CWD_MESSAGE "250 Directory successfully changed.\r\n"
+#define PATHNAME_CREATED "257 \"%s\" created.\r\n"
 
 // File operation messages
 #define TRANSFER_NOT_ESTABLISHED "425 Data connection not established.\r\n"
@@ -40,9 +45,9 @@
 #define FILE_NOT_EXIST "550 File does not exist.\r\n"
 #define FILE_NOT_PERMITTED "550 Permission denied.\r\n"
 #define FILE_STATUS_OK "150 Opening BINARY mode data connection for %.900s.\r\n"
-#define PATHNAME_CREATED "257 \"%s\" created.\r\n"
 #define ACTION_ABORTED "451 Requested action aborted: local error in processing.\r\n"
 #define DISK_ISSUE "450 Disk failure or out of memory.\r\n"
+
 
 // Mode and type settings
 #define TRANSFER_PORT "200 PORT command successful.\r\n"

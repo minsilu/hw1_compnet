@@ -13,6 +13,7 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 
+// #include <fcntl.h>
 
 int start_server(int port, const char *root) {
 
@@ -20,6 +21,15 @@ int start_server(int port, const char *root) {
 	struct sockaddr_in client_addr;
     int listen_fd, conn_fd;
     int reuse = 1; 
+
+    // // test
+    // int listen_fd, max_fd, activity, i, valread;
+    // char buffer[BUFFER_SIZE];
+    // int client_socket[MAX_CLIENTS];
+    // fd_set readfds;
+    // for (i = 0; i < MAX_CLIENTS; i++) {
+    //     client_socket[i] = 0;
+    // }
 
 	// create socket
 	if ((listen_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) {  

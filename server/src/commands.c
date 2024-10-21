@@ -11,6 +11,8 @@
 #include <fcntl.h>
 #include <time.h>
 #include <stdlib.h>
+#include <limits.h>
+
 
 void handle_user(int client_socket, const char *username, SessionState *state, char *stored_username) {
     if (username == NULL || strcmp(username, "anonymous") != 0) {
@@ -173,11 +175,17 @@ void handle_retr(int client_socket, const char *filename, DataConnection *data_c
     if (filename == NULL) {
         send_message(client_socket, SYNTAX_ERROR);
         return;
-    } else if (filename[0] == '/') {
-        sprintf(filepath, "%s%s", data_conn->root, filename);
+    } else if (!is_path_safe(filename)) {
+        send_message(client_socket, FILE_NOT_PERMITTED);
+        return;
     } else {
-        sprintf(filepath, "%s", filename);
+        if (filename[0] == '/') {
+            sprintf(filepath, "%s%s", data_conn->root, filename);
+        } else {
+            sprintf(filepath, "%s", filename);
+        }
     }
+
 
     //file_size = get_file_size(filepath);
 
@@ -259,8 +267,7 @@ void handle_stor(int client_socket, const char *filepath, DataConnection *data_c
     if (filepath == NULL) {
         send_message(client_socket, SYNTAX_ERROR);
         return;
-    }
-    else{
+    } else {
         char *last_slash = strrchr(filepath, '/');
         if (last_slash != NULL) {
             strncpy(filename, last_slash + 1, BUFFER_SIZE - 1);
@@ -269,6 +276,11 @@ void handle_stor(int client_socket, const char *filepath, DataConnection *data_c
             strncpy(filename, filepath, BUFFER_SIZE - 1);
             filename[sizeof(filename) - 1] = '\0';
         }
+    }
+
+    if (!is_path_safe(filename)) {
+        send_message(client_socket, FILE_NOT_PERMITTED);
+        return; 
     }
 
     // Open the file for writing
@@ -319,7 +331,106 @@ void handle_stor(int client_socket, const char *filepath, DataConnection *data_c
     // no consider retransmit here
 }
 
-void handle_quit(int client_socket) {
-    const char *response = "221 Goodbye.\r\n";
-    send(client_socket, response, strlen(response), 0);
+void handle_cwd(int client_socket, const char *path, DataConnection *data_conn) {
+    char new_path[BUFFER_SIZE];
+    char resolved_path[BUFFER_SIZE];
+    
+    // If the path is absolute, use it directly
+    if (path[0] == '/') {
+        snprintf(new_path, sizeof(new_path), "%s%s", data_conn->root, path);
+        //sprintf(new_path, "%s%s", data_conn->root, path);
+    } else {
+        // If the path is relative, append it to the current directory
+        snprintf(new_path, sizeof(new_path), "%s/%s", data_conn->current_dir, path);
+        //sprintf(new_path, "%s/%s", data_conn->current_dir, path);
+    }
+
+    // Resolve the path (remove ".." and "." components)
+    if (realpath(new_path, resolved_path) == NULL) {
+        send_message(client_socket, CWD_FAILED);
+        return;
+    }
+
+    // Check if the new path is within the root directory
+    if (strncmp(resolved_path, data_conn->root, strlen(data_conn->root)) != 0) {
+        send_message(client_socket, FILE_NOT_PERMITTED);
+        return;
+    }
+
+    // Check if the new path exists and is a directory
+    struct stat st;
+    if (stat(resolved_path, &st) != 0 || !S_ISDIR(st.st_mode)) {
+        send_message(client_socket, INVALID_PATH);
+        return;
+    }
+
+    // Update the current directory
+    strncpy(data_conn->current_dir, resolved_path, sizeof(data_conn->current_dir) - 1);
+    data_conn->current_dir[sizeof(data_conn->current_dir) - 1] = '\0';
+
+    send_message(client_socket, CWD_MESSAGE);
+}
+
+void handle_pwd(int client_socket, const DataConnection *data_conn) {
+    char response[BUFFER_SIZE];
+    const char *relative_path = data_conn->current_dir + strlen(data_conn->root);
+    
+    // If we're at the root, just use "/"
+    if (strlen(relative_path) == 0) {
+        relative_path = "/";
+    }
+
+    // Count the number of double quotes in the path
+    int quote_count = 0;
+    for (const char *p = relative_path; *p; p++) {
+        if (*p == '"') quote_count++;
+    }
+
+    // Allocate memory for the escaped path
+    char *escaped_path = malloc(strlen(relative_path) + quote_count + 1);
+    if (escaped_path == NULL) {
+        send_message(client_socket, INTERNAL_ERROR);
+        return;
+    }
+
+    // Escape double quotes in the path
+    char *dst = escaped_path;
+    for (const char *src = relative_path; *src; src++) {
+        if (*src == '"') {
+            *dst++ = '"';
+            *dst++ = '"';
+        } else {
+            *dst++ = *src;
+        }
+    }
+    *dst = '\0';
+
+    snprintf(response, sizeof(response), PWD_MESSAGE, escaped_path);
+    send_message(client_socket, response);
+
+    free(escaped_path);
+}
+
+void handle_list(int client_socket, const DataConnection *data_conn) {
+    return;
+}
+
+
+
+void handle_quit(int client_socket, DataConnection *data_conn) {
+    // Close any open data connections
+    if (data_conn->pasv_fd > 0) {
+        close(data_conn->pasv_fd);
+        data_conn->pasv_fd = -1;
+    }
+    
+    // You can add statistics reporting here if you want
+    // For example:
+    // char stats[BUFFER_SIZE];
+    // snprintf(stats, sizeof(stats), "221-You have transferred %lld bytes.\r\n", data_conn->total_bytes_transferred);
+    // send_message(client_socket, stats);
+    
+    send_message(client_socket, GOODBYE_MESSAGE);
+    close(client_socket);
+    exit(0);
 }

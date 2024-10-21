@@ -40,6 +40,25 @@ int connect_client(DataConnection *data_conn) {
     return data_socket;
 }
 
+int is_path_safe(const char *path) {
+    if (path == NULL) {
+        return 0;
+    }
+    
+    // Check for "../" pattern
+    if (strstr(path, "../") != NULL) {
+        return 0;
+    }
+    
+    // Check for ".." at the end of the path
+    size_t len = strlen(path);
+    if (len >= 2 && strcmp(path + len - 2, "..") == 0) {
+        return 0;
+    }
+    
+    return 1;
+}
+
 ssize_t send_file(int socket, int file_fd, off_t *offset, ssize_t count, int speed) {
     char buffer[BUFFER_SIZE];
     ssize_t bytes_sent = 0;

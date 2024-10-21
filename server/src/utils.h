@@ -23,6 +23,7 @@ typedef struct {
     int port_port;                  // Port number for PORT mode
     int pasv_fd;           // Socket for data connection
     off_t last_sent_byte;      // Last byte  
+    char current_dir[BUFFER_SIZE]; // Current directory - absolute path in server e.g. /home/username
 
 } DataConnection;
 
@@ -30,7 +31,10 @@ typedef struct {
 // Helper function to send a message to the client
 ssize_t send_message(int client_socket, const char *message);
 int connect_client(DataConnection *data_conn);
+int is_path_safe(const char *path);
 ssize_t send_file(int socket, int file_fd, off_t *offset, ssize_t count, int speed);
 ssize_t receive_file(int socket, int file_fd, int speed);
 ssize_t get_file_size(const char *filename);
+
+
 #endif // UTILS_H

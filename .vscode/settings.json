@@ -4,6 +4,7 @@
         "typeinfo": "cpp",
         "iostream": "cpp",
         "commands.h": "c",
-        "fcntl.h": "c"
+        "fcntl.h": "c",
+        "errno.h": "c"
     }
 }
