@@ -6,6 +6,8 @@
 #include <unistd.h> 
 #include <sys/types.h>
 #include <fcntl.h>
+#include <arpa/inet.h>
+
 
 
 ssize_t send_message(int client_socket, const char *message) {
@@ -22,9 +24,10 @@ int connect_client(DataConnection *data_conn) {
     }
 
     memset(&client_addr, 0, sizeof(client_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = inet_addr(data_conn->ip_address);
-    server_addr.sin_port = htons(data_conn->port);
+    
+    client_addr.sin_family = AF_INET;
+    client_addr.sin_addr.s_addr = inet_addr(data_conn->ip_address);
+    client_addr.sin_port = htons(data_conn->port_port);
 
     if (connect(data_socket, (struct sockaddr *)&client_addr, sizeof(client_addr)) < 0) {
         close(data_socket);
@@ -34,7 +37,7 @@ int connect_client(DataConnection *data_conn) {
     return data_socket;
 }
 
-ssize_t sendfile(int socket, int file_fd, off_t *offset, size_t count, int speed) {
+ssize_t send_file(int socket, int file_fd, off_t *offset, ssize_t count, int speed) {
     char buffer[BUFFER_SIZE];
     ssize_t bytes_sent = 0;
     ssize_t bytes_read;
@@ -69,11 +72,10 @@ ssize_t sendfile(int socket, int file_fd, off_t *offset, size_t count, int speed
     return bytes_sent;
 }
 
-int get_file_size(const char *filename) {
+ssize_t get_file_size(const char *filename) {
     
     struct stat st;
     if (stat(filename, &st) == -1) {
-        perror("stat failed");
         return -1;
     }
 

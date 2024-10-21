@@ -3,7 +3,6 @@
 #include <ctype.h>
 #include <memory.h>
 
-
 #include "server.h"
 #include "config.h"
 #include "session.h"

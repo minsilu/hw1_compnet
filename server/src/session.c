@@ -16,7 +16,16 @@ void handle_client(int client_socket, const char *root) {
     // int logged_in = 0;
     // int recv_num = 0;
     SessionState state = STATE_INITIAL;
-    DataConnection data_conn = {MODE_NONE, {0}, root, -1, -1, 0};
+
+    DataConnection data_conn = {
+        .mode = MODE_NONE,
+        .ip_address = {0},
+        .port_port = -1,
+        .pasv_fd = -1,
+        .last_sent_byte = 0
+    };
+    strncpy(data_conn.root, root, sizeof(data_conn.root) - 1);
+    data_conn.root[sizeof(data_conn.root) - 1] = '\0'; 
 
     // Send welcome message
     send_message(client_socket, WELCOME_MESSAGE);
@@ -70,12 +79,12 @@ void handle_client(int client_socket, const char *root) {
             } else {
                 send_message(client_socket, NOT_LOGGED_IN);
             }
-        } else(state == STATE_LOGGED_IN) {
+        } else if (state == STATE_LOGGED_IN) {
             if (strcmp(command, "SYST") == 0) handle_syst(client_socket);
             else if(strcmp(command, "TYPE") == 0) handle_type(client_socket, arg);
             else if(strcmp(command, "PORT") == 0) handle_port(client_socket, arg, &data_conn);
             else if(strcmp(command, "RETR") == 0) handle_retr(client_socket, arg, &data_conn);
-            else if(strcmp(command, "PASV") == 0) handle_pasv(client_socket);
+            //else if(strcmp(command, "PASV") == 0) handle_pasv(client_socket);
             else if (strcmp(command, "QUIT") == 0) {
                 handle_quit(client_socket);
                 break;

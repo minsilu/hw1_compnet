@@ -5,6 +5,10 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 void handle_user(int client_socket, const char *username, SessionState *state, char *stored_username) {
     if (username == NULL || strcmp(username, "anonymous") != 0) {
@@ -68,7 +72,7 @@ void handle_port(int client_socket, const char *address, DataConnection *data_co
 
     int port = p1 * 256 + p2;
     snprintf(data_conn->ip_address, sizeof(data_conn->ip_address), "%d.%d.%d.%d", h1, h2, h3, h4);
-    data_conn->port = port;
+    data_conn->port_port = port;
     data_conn->mode = MODE_PORT;
 
     // Close any existing data connection if necessary
@@ -83,6 +87,7 @@ void handle_port(int client_socket, const char *address, DataConnection *data_co
 
 void handle_retr(int client_socket, const char *filename, DataConnection *data_conn) {
 
+    int data_socket = -1;
     // Check if the data connection is established
     if (data_conn->mode == MODE_NONE) {
         send_message(client_socket, TRANSFER_NOT_ESTABLISHED);
@@ -115,6 +120,7 @@ void handle_retr(int client_socket, const char *filename, DataConnection *data_c
 
     // Open the file in binary mode
     int file_fd = open(filename, O_RDONLY);
+    //int file_fd = fopen(filepath, "rb");
     if (file_fd < 0) {
         if (errno == ENOENT) {
             send_message(client_socket, FILE_NOT_EXIST);
@@ -132,14 +138,14 @@ void handle_retr(int client_socket, const char *filename, DataConnection *data_c
 
     // Send initial response indicating the server is ready to send the file
     char response[BUFFER_SIZE];
-    snprintf(response, FILE_STATUS_OK, filename);
+    snprintf(response, sizeof(response), FILE_STATUS_OK, filename);
     send_message(client_socket, response);
 
     // Attempt to resume transmission if applicable
     off_t offset = data_conn->last_sent_byte;
     lseek(file_fd, offset, SEEK_SET); // Move to the last sent byte
 
-    ssize_t bytes_sent = sendfile(data_socket, file_fd, &offset, get_file_size(filename) - offset, speed);
+    ssize_t bytes_sent = send_file(data_socket, file_fd, &offset, (ssize_t)(get_file_size(filename) - offset), TRANSFER_SPEED);
 
     // Check for errors during sending
     if (bytes_sent < 0) {

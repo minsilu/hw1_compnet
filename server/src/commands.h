@@ -1,5 +1,6 @@
 #ifndef COMMANDS_H
 #define COMMANDS_H
+#include "utils.h"
 #include <stddef.h>
 
 

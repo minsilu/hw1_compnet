@@ -2,6 +2,7 @@
 #define UTILS_H
 
 #include <netinet/in.h>
+#include "config.h"
 
 typedef enum {
     STATE_INITIAL,
@@ -19,7 +20,7 @@ typedef struct {
     TransferMode mode;          // Current transfer mode (PORT or PASV)
     char ip_address[INET_ADDRSTRLEN]; // IP address for PORT mode
     char root[BUFFER_SIZE];     // Root directory for PASV mode
-    int port;                  // Port number for PORT mode
+    int port_port;                  // Port number for PORT mode
     int pasv_fd;           // Socket for data connection
     off_t last_sent_byte;      // Last byte sent
 
@@ -29,6 +30,6 @@ typedef struct {
 // Helper function to send a message to the client
 ssize_t send_message(int client_socket, const char *message);
 int connect_client(DataConnection *data_conn);
-ssize_t sendfile(int socket, int file_fd, off_t *offset, size_t count, int speed);
-
+ssize_t send_file(int socket, int file_fd, off_t *offset, ssize_t count, int speed);
+ssize_t get_file_size(const char *filename);
 #endif // UTILS_H
