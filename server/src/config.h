@@ -52,14 +52,18 @@
 #define DIR_DELETED "250 Directory and its contents removed.\r\n" 
 #define DIR_NOT_FOUND "550 Directory not found.\r\n"
 #define DIR_REMOVE_FAILED "550 Failed to remove directory.\r\n"
-
+#define FILE_DELETED "250 File removed.\r\n"
+#define FILE_NOT_FOUND "550 File not found.\r\n"
+#define FILE_REMOVE_FAILED "550 Failed to remove file.\r\n"
+#define INVALID_REST "501 REST command: Invalid restart point.\r\n"
+#define REST_RESPONSE "350 Restarting at %lld. Send STOR or RETR to initiate transfer.\r\n"
+#define TRANSFER_ABORTED "551 The restart point is larger than the file.\r\n"
 
 // Mode and type settings
 #define TRANSFER_PORT "200 PORT command successful.\r\n"
 #define TRANSFER_PASV "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d)\r\n"
 #define TYPE_SET_BINARY "200 Type set to I.\r\n"
 #define TYPE_UNKNOWN "200 Unknown type.\r\n"
-
 
 
 

@@ -85,12 +85,15 @@ void handle_client(int client_socket, const char *root) {
             else if(strcmp(command, "PORT") == 0) handle_port(client_socket, arg, &data_conn);
             else if(strcmp(command, "PASV") == 0) handle_pasv(client_socket, &data_conn);
             else if(strcmp(command, "RETR") == 0) handle_retr(client_socket, arg, &data_conn);
+            else if(strcmp(command, "REST") == 0) handle_retr(client_socket, arg, &data_conn);
             else if(strcmp(command, "STOR") == 0) handle_stor(client_socket, arg, &data_conn);
+            else if(strcmp(command, "APPE") == 0) handle_appe(client_socket, arg, &data_conn);
             else if(strcmp(command, "LIST") == 0) handle_list(client_socket, arg, &data_conn);
             else if(strcmp(command, "PWD") == 0) handle_pwd(client_socket, &data_conn);
             else if(strcmp(command, "CWD") == 0) handle_cwd(client_socket, arg, &data_conn);
             else if((strcmp(command, "MKD") == 0) || (strcmp(command, "XMKD") == 0)) handle_mkd(client_socket, arg, &data_conn);
             else if((strcmp(command, "RMD") == 0) || (strcmp(command, "XRMD") == 0)) handle_rmd(client_socket, arg, &data_conn);
+            else if(strcmp(command, "DELE") == 0) handle_dele(client_socket, arg, &data_conn);
             else {
                 send_message(client_socket, INVALID_COMMAND);
             }
@@ -99,4 +102,5 @@ void handle_client(int client_socket, const char *root) {
     }
 
     close(client_socket);
+    close(data_conn.pasv_fd);
 }
