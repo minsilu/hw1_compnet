@@ -47,6 +47,11 @@
 #define FILE_STATUS_OK "150 Opening BINARY mode data connection for %.900s.\r\n"
 #define ACTION_ABORTED "451 Requested action aborted: local error in processing.\r\n"
 #define DISK_ISSUE "450 Disk failure or out of memory.\r\n"
+#define DIR_EXIST "550 Directory already exists.\r\n"
+#define DIR_CREATE_FAILED "550 Failed to create directory.\r\n"
+#define DIR_DELETED "250 Directory and its contents removed.\r\n" 
+#define DIR_NOT_FOUND "550 Directory not found.\r\n"
+#define DIR_REMOVE_FAILED "550 Failed to remove directory.\r\n"
 
 
 // Mode and type settings

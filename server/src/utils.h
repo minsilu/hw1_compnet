@@ -1,8 +1,10 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#define _XOPEN_SOURCE 500
 #include <netinet/in.h>
 #include "config.h"
+#include <ftw.h>
 
 typedef enum {
     STATE_INITIAL,
@@ -35,6 +37,8 @@ int is_path_safe(const char *path);
 ssize_t send_file(int socket, int file_fd, off_t *offset, ssize_t count, int speed);
 ssize_t receive_file(int socket, int file_fd, int speed);
 ssize_t get_file_size(const char *filename);
+int remove_callback(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftwbuf);
+//int remove_callback(const char *fpath, const struct stat *sb __attribute__((unused)),
 
 
 #endif // UTILS_H

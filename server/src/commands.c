@@ -1,3 +1,6 @@
+#define _XOPEN_SOURCE 500
+#define _POSIX_C_SOURCE 200809L
+
 #include "commands.h"
 #include "config.h"
 #include "utils.h"
@@ -12,6 +15,8 @@
 #include <time.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <dirent.h>
+#include <ftw.h>
 
 
 void handle_user(int client_socket, const char *username, SessionState *state, char *stored_username) {
@@ -180,9 +185,11 @@ void handle_retr(int client_socket, const char *filename, DataConnection *data_c
         return;
     } else {
         if (filename[0] == '/') {
-            sprintf(filepath, "%s%s", data_conn->root, filename);
+            //sprintf(filepath, "%s%s", data_conn->root, filename);
+            snprintf(filepath, sizeof(filepath), "%s%s", data_conn->root, filename);
         } else {
-            sprintf(filepath, "%s", filename);
+            snprintf(filepath, sizeof(filepath), "%s/%s", data_conn->current_dir, filename);
+            //sprintf(filepath, "%s", filename);
         }
     }
 
@@ -215,7 +222,7 @@ void handle_retr(int client_socket, const char *filename, DataConnection *data_c
     off_t offset = data_conn->last_sent_byte;
     lseek(file_fd, offset, SEEK_SET); // Move to the last sent byte
 
-    ssize_t bytes_sent = send_file(data_socket, file_fd, &offset, (ssize_t)(get_file_size(filename) - offset), TRANSFER_SPEED);
+    ssize_t bytes_sent = send_file(data_socket, file_fd, &offset, (ssize_t)(get_file_size(filepath) - offset), TRANSFER_SPEED);
 
     // Check for errors during sending
     if (bytes_sent < 0) {
@@ -235,7 +242,6 @@ void handle_retr(int client_socket, const char *filename, DataConnection *data_c
     data_conn->pasv_fd = -1;  // Reset the data socket
 
     // NOTICE: 
-    // no consider pwd change here
     // no set last byte sent to 0
     // i really confuse went to change your last byte sent if a tcp error happens
 
@@ -282,10 +288,14 @@ void handle_stor(int client_socket, const char *filepath, DataConnection *data_c
         send_message(client_socket, FILE_NOT_PERMITTED);
         return; 
     }
+    
+
+    char fullpath[BUFFER_SIZE];
+    snprintf(fullpath, sizeof(fullpath), "%s/%s", data_conn->current_dir, filename);
 
     // Open the file for writing
-    int file_fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644); //check
-    // int file_fd = open(filename, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    int file_fd = open(fullpath, O_WRONLY | O_CREAT | O_TRUNC, 0644); //check
+    // int file_fd = open(fullpath, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (file_fd < 0) {
         if (errno == EACCES) {
             send_message(client_socket, FILE_NOT_PERMITTED);
@@ -293,6 +303,7 @@ void handle_stor(int client_socket, const char *filepath, DataConnection *data_c
             send_message(client_socket, DISK_ISSUE);
         }
         close(data_socket);
+        data_conn->pasv_fd = -1;
         return;
     }
 
@@ -308,7 +319,7 @@ void handle_stor(int client_socket, const char *filepath, DataConnection *data_c
 
     // Send initial response indicating the server is ready to receive the file
     char response[BUFFER_SIZE] = { 0 };
-    snprintf(response, sizeof(response), FILE_STATUS_OK, filename);
+    snprintf(response, sizeof(response), FILE_STATUS_OK, filepath);
     send_message(client_socket, response);
 
     // Receive and write the file
@@ -327,8 +338,110 @@ void handle_stor(int client_socket, const char *filepath, DataConnection *data_c
     data_conn->pasv_fd = -1;
 
     //NOTICE: 
-    // no consider pwd change here
     // no consider retransmit here
+}
+
+void handle_list(int client_socket, const char *path, DataConnection *data_conn) {
+    int data_socket = -1;
+    char full_path[BUFFER_SIZE];
+    char resolved_path[BUFFER_SIZE];
+    DIR *dir;
+    struct dirent *entry;
+    struct stat file_stat;
+    char file_info[BUFFER_SIZE];
+    char time_str[20];
+    
+    // Check if the data connection is established
+    if (data_conn->mode == MODE_NONE) {
+        send_message(client_socket, TRANSFER_NOT_ESTABLISHED);
+        return;
+    } else if (data_conn->mode == MODE_PORT) {
+        data_socket = connect_client(data_conn);
+    } else if (data_conn->mode == MODE_PASV) {
+        data_socket = accept(data_conn->pasv_fd, NULL, NULL);
+        close(data_conn->pasv_fd);
+    }
+
+    data_conn->mode = MODE_NONE;
+
+    if (data_socket == -1) {
+        perror("data socket failed");
+        send_message(client_socket, TCP_NOT_ESTABLISHED);
+        return;
+    }
+
+    // Construct the full path
+    if (path == NULL || strlen(path) == 0) {
+        strncpy(full_path, data_conn->current_dir, sizeof(full_path) - 1);
+    } else if (path[0] == '/') {
+        snprintf(full_path, sizeof(full_path), "%s%s", data_conn->root, path);
+    } else {
+        snprintf(full_path, sizeof(full_path), "%s/%s", data_conn->current_dir, path);
+    }
+
+    // Resolve the path (remove ".." and "." components)
+    if (realpath(full_path, resolved_path) == NULL) {
+        send_message(client_socket, CWD_FAILED);
+        return;
+    }
+
+    // Check if the path is within the root directory
+    if (strncmp(resolved_path, data_conn->root, strlen(data_conn->root)) != 0) {
+        send_message(client_socket, FILE_NOT_PERMITTED);
+        return;
+    }
+
+    // Open the directory
+    dir = opendir(resolved_path);
+    if (dir == NULL) {
+        send_message(client_socket, INVALID_PATH);
+        close(data_socket);
+        return;
+    }
+
+    // Send initial response indicating the server is ready to receive the directory
+    char response[BUFFER_SIZE];
+    snprintf(response, sizeof(response), FILE_STATUS_OK, path);
+    send_message(client_socket, response);
+
+    // Read and send directory entries
+    while ((entry = readdir(dir)) != NULL) {
+        char file_path[BUFFER_SIZE];
+        snprintf(file_path, sizeof(file_path), "%s/%s", resolved_path, entry->d_name);
+
+        if (stat(file_path, &file_stat) == 0) {
+            strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M", localtime(&file_stat.st_mtime));
+            
+            snprintf(file_info, sizeof(file_info), "+%s,%s%s,%lld\r\n",
+                     entry->d_name,
+                     S_ISDIR(file_stat.st_mode) ? "dir" : "file",
+                     S_ISDIR(file_stat.st_mode) ? "" : ",r",
+                     (long long)file_stat.st_size);
+
+            if (send(data_socket, file_info, strlen(file_info), 0) < 0) {
+                if (errno == EPIPE || errno == ECONNRESET) {
+                    send_message(client_socket, TCP_BROKEN);
+                }
+                else {
+                    send_message(client_socket, ACTION_ABORTED);
+                }
+                closedir(dir);
+                close(data_socket);
+                data_conn->pasv_fd = -1;
+                return;
+            }
+        }
+    }
+
+    closedir(dir);
+    close(data_socket);
+    data_conn->pasv_fd = -1;
+    send_message(client_socket, TRANSFER_COMPLETE);
+
+}
+
+void handle_rest(int client_socket, const char *path, DataConnection *data_conn) {
+
 }
 
 void handle_cwd(int client_socket, const char *path, DataConnection *data_conn) {
@@ -411,11 +524,176 @@ void handle_pwd(int client_socket, const DataConnection *data_conn) {
     free(escaped_path);
 }
 
-void handle_list(int client_socket, const DataConnection *data_conn) {
-    return;
+void handle_mkd(int client_socket, const char *path, DataConnection *data_conn) {
+    char full_path[BUFFER_SIZE];
+    char resolved_path[BUFFER_SIZE];
+
+    // Construct the full path
+    if (path[0] == '/') {
+        snprintf(full_path, sizeof(full_path), "%s%s", data_conn->root, path);
+    } else {
+        snprintf(full_path, sizeof(full_path), "%s/%s", data_conn->current_dir, path);
+    }
+
+    // Resolve the path (remove ".." and "." components)
+    if (realpath(full_path, resolved_path) == NULL) {
+        // If realpath fails, it might be because the directory doesn't exist yet
+        // In this case, use the full_path
+        strncpy(resolved_path, full_path, sizeof(resolved_path) - 1);
+        resolved_path[sizeof(resolved_path) - 1] = '\0';
+    }
+
+    // Check if the new path is within the root directory
+    if (strncmp(resolved_path, data_conn->root, strlen(data_conn->root)) != 0) {
+        send_message(client_socket, FILE_NOT_PERMITTED);
+        return;
+    }
+    
+    // Check if the path is the root directory itself
+    if (strcmp(resolved_path, data_conn->root) == 0) {
+        send_message(client_socket, FILE_NOT_PERMITTED);
+        return;
+    }
+
+    // Create the directory
+    if (mkdir(resolved_path, 0755) == 0) {
+        char response[BUFFER_SIZE];
+        // Escape double quotes in the path
+        char *escaped_path = malloc(strlen(resolved_path) * 2 + 1);
+        if (escaped_path == NULL) {
+            send_message(client_socket, INTERNAL_ERROR);
+            return;
+        }
+        char *dst = escaped_path;
+        for (const char *src = resolved_path; *src; src++) {
+            if (*src == '"') {
+                *dst++ = '"';
+                *dst++ = '"';
+            } else {
+                *dst++ = *src;
+            }
+        }
+        *dst = '\0';
+        snprintf(response, sizeof(response), PATHNAME_CREATED, escaped_path);
+        send_message(client_socket, response);
+        free(escaped_path);
+    } else {
+        if (errno == EACCES) {
+            send_message(client_socket, FILE_NOT_PERMITTED);
+        } else if (errno == EEXIST) {
+            send_message(client_socket, DIR_EXIST);
+        } else {
+            send_message(client_socket, DIR_CREATE_FAILED);
+        }
+    }
 }
 
+void handle_rmd(int client_socket, const char *path, DataConnection *data_conn) {
+    char full_path[BUFFER_SIZE];
+    char resolved_path[BUFFER_SIZE];
 
+    // Construct the full path
+    if (path[0] == '/') {
+        snprintf(full_path, sizeof(full_path), "%s%s", data_conn->root, path);
+    } else {
+        snprintf(full_path, sizeof(full_path), "%s/%s", data_conn->current_dir, path);
+    }
+
+    // Resolve the path (remove ".." and "." components)
+    if (realpath(full_path, resolved_path) == NULL) {
+        send_message(client_socket, INVALID_PATH);
+        return;
+    }
+
+    // Check if the path is within the root directory
+    if (strncmp(resolved_path, data_conn->root, strlen(data_conn->root)) != 0) {
+        send_message(client_socket, FILE_NOT_PERMITTED);
+        return;
+    }
+
+    // Check if the path is the root directory itself
+    if (strcmp(resolved_path, data_conn->root) == 0) {
+        send_message(client_socket, FILE_NOT_PERMITTED);
+        return;
+    }
+
+    // Remove the directory and its contents
+    if (nftw(resolved_path, remove_callback, 64, FTW_DEPTH | FTW_PHYS) == 0) {
+        send_message(client_socket, DIR_DELETED);
+        
+        // If the removed directory was a parent of the current working directory,
+        // update the current working directory to its closest existing parent
+        if (strncmp(data_conn->current_dir, resolved_path, strlen(resolved_path)) == 0) {
+            char *parent = strdup(data_conn->current_dir);
+            while (strlen(parent) > strlen(data_conn->root)) {
+                char *last_slash = strrchr(parent, '/');
+                if (last_slash) {
+                    *last_slash = '\0';
+                    if (access(parent, F_OK) == 0) {
+                        strncpy(data_conn->current_dir, parent, sizeof(data_conn->current_dir) - 1);
+                        data_conn->current_dir[sizeof(data_conn->current_dir) - 1] = '\0';
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+            free(parent);
+        }
+    } else {
+        if (errno == EACCES) {
+            send_message(client_socket, FILE_NOT_PERMITTED);
+        } else if (errno == ENOENT) {
+            send_message(client_socket, DIR_NOT_FOUND);
+        } else {
+            send_message(client_socket, DIR_REMOVE_FAILED);
+        }
+    }
+}
+
+/* void handle_dele(int client_socket, const char *path, DataConnection *data_conn) {
+    char full_path[BUFFER_SIZE];
+    char resolved_path[BUFFER_SIZE];
+
+    // Construct the full path
+    if (path[0] == '/') {
+        snprintf(full_path, sizeof(full_path), "%s%s", data_conn->root, path);
+    } else { 
+        snprintf(full_path, sizeof(full_path), "%s/%s", data_conn->current_dir, path);
+    }
+
+    // Resolve the path (remove ".." and "." components)    
+    if (realpath(full_path, resolved_path) == NULL) {
+        send_message(client_socket, INVALID_PATH);
+        return;
+    }
+
+    // Check if the path is within the root directory
+    if (strncmp(resolved_path, data_conn->root, strlen(data_conn->root)) != 0) {
+        send_message(client_socket, FILE_NOT_PERMITTED);
+        return;
+    }
+
+    // Check if the path is the root directory itself
+    if (strcmp(resolved_path, data_conn->root) == 0) {
+        send_message(client_socket, FILE_NOT_PERMITTED);
+        return;
+    }
+
+    // Remove the file
+    if (remove(resolved_path) == 0) {
+        send_message(client_socket, FILE_DELETED);
+    } else {
+        if (errno == EACCES) {
+        
+            send_message(client_socket, FILE_NOT_PERMITTED);
+        } else if (errno == ENOENT) {
+            send_message(client_socket, FILE_NOT_FOUND);
+        } else {
+            send_message(client_socket, FILE_REMOVE_FAILED);
+        }
+    }
+} */
 
 void handle_quit(int client_socket, DataConnection *data_conn) {
     // Close any open data connections

@@ -1,3 +1,6 @@
+#define _DEFAULT_SOURCE
+//#define _XOPEN_SOURCE 500
+
 #include "utils.h"
 #include "config.h"
 #include <sys/socket.h>
@@ -9,7 +12,8 @@
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <errno.h>
-#define _DEFAULT_SOURCE
+#include <ftw.h>
+
 
 
 ssize_t send_message(int client_socket, const char *message) {
@@ -135,11 +139,21 @@ ssize_t receive_file(int socket, int file_fd, int speed) {
 }
 
 ssize_t get_file_size(const char *filename) {
-    
+
     struct stat st;
     if (stat(filename, &st) == -1) {
         return -1;
     }
 
     return st.st_size;
+}
+
+int remove_callback(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftwbuf) {
+    (void)sb;      
+    (void)typeflag; 
+    (void)ftwbuf; 
+    int rv = remove(fpath);
+    if (rv)
+        perror(fpath);
+    return rv;
 }
