@@ -28,7 +28,7 @@ int main(int argc, char *argv[]) {
             }
             port = (int)port_long;
             i++;  
-        } else if (strcmp(argv[i], "-path") == 0) {
+        } else if (strcmp(argv[i], "-root") == 0) {
             root = argv[i + 1];
             if (strlen(root) == 0) {
                 fprintf(stderr, "Error: Root path cannot be empty.\n");

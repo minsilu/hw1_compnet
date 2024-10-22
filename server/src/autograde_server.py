@@ -19,6 +19,7 @@ class TestServer:
         proc = subprocess.Popen('make', stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         have_error = False
         while True:
+            #stdout = proc.stdout.readline()
             stdout = proc.stdout.readline()
             stderr = proc.stderr.readline()
             if not (stdout and stderr):

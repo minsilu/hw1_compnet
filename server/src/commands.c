@@ -53,7 +53,7 @@ void handle_syst(int client_socket) {
 }
 
 void handle_type(int client_socket, const char *type) {
-    if (type == NULL || strcmp(type, "I") != 0) {
+    if (type == NULL || strcmp(type, "I") == 0) {
         send_message(client_socket, TYPE_SET_BINARY);
     }
     else {
