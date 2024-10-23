@@ -17,6 +17,8 @@
 #include <limits.h>
 #include <dirent.h>
 #include <ftw.h>
+#include <pwd.h>  // For struct passwd
+#include <grp.h>  // For struct group
 
 
 void handle_user(int client_socket, const char *username, SessionState *state, char *stored_username) {
@@ -448,6 +450,7 @@ void handle_list(int client_socket, const char *path, DataConnection *data_conn)
     struct stat file_stat;
     char file_info[BUFFER_SIZE];
     char time_str[20];
+    char permissions[11];
     
     // Check if the data connection is established
     if (data_conn->mode == MODE_NONE) {
@@ -510,13 +513,42 @@ void handle_list(int client_socket, const char *path, DataConnection *data_conn)
         snprintf(file_path, sizeof(file_path), "%s/%s", resolved_path, entry->d_name);
 
         if (stat(file_path, &file_stat) == 0) {
-            strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M", localtime(&file_stat.st_mtime));
+            // strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M", localtime(&file_stat.st_mtime));
             
-            snprintf(file_info, sizeof(file_info), "+%s,%s%s,%lld\r\n",
-                     entry->d_name,
-                     S_ISDIR(file_stat.st_mode) ? "dir" : "file",
-                     S_ISDIR(file_stat.st_mode) ? "" : ",r",
-                     (long long)file_stat.st_size);
+            // snprintf(file_info, sizeof(file_info), "+%s,%s%s,%lld\r\n",
+            //          entry->d_name,
+            //          S_ISDIR(file_stat.st_mode) ? "dir" : "file",
+            //          S_ISDIR(file_stat.st_mode) ? "" : ",r",
+            //          (long long)file_stat.st_size);
+        // Prepare the output format similar to 'ls -l'
+            strftime(time_str, sizeof(time_str), "%b %d %H:%M", localtime(&file_stat.st_mtime));
+
+            // Get file permissions
+            snprintf(permissions, sizeof(permissions), "%c%c%c%c%c%c%c%c%c%c",
+                    S_ISDIR(file_stat.st_mode) ? 'd' : '-',
+                    (file_stat.st_mode & S_IRUSR) ? 'r' : '-',
+                    (file_stat.st_mode & S_IWUSR) ? 'w' : '-',
+                    (file_stat.st_mode & S_IXUSR) ? 'x' : '-',
+                    (file_stat.st_mode & S_IRGRP) ? 'r' : '-',
+                    (file_stat.st_mode & S_IWGRP) ? 'w' : '-',
+                    (file_stat.st_mode & S_IXGRP) ? 'x' : '-',
+                    (file_stat.st_mode & S_IROTH) ? 'r' : '-',
+                    (file_stat.st_mode & S_IWOTH) ? 'w' : '-',
+                    (file_stat.st_mode & S_IXOTH) ? 'x' : '-');
+
+            // Get the number of links (for directories, this is usually 2 + number of subdirectories)
+            int num_links = file_stat.st_nlink;
+
+            // Get the owner and group names
+            struct passwd *pw = getpwuid(file_stat.st_uid);
+            struct group  *gr = getgrgid(file_stat.st_gid);
+            const char *owner = pw ? pw->pw_name : "unknown";
+            const char *group = gr ? gr->gr_name : "unknown";
+
+            // Format the file information
+            snprintf(file_info, sizeof(file_info), "%s %2d %s %s %8lld %s %s\r\n",
+                    permissions, num_links, owner, group,
+                    (long long)file_stat.st_size, time_str, entry->d_name);
 
             if (send(data_socket, file_info, strlen(file_info), 0) < 0) {
                 if (errno == EPIPE || errno == ECONNRESET) {
@@ -670,7 +702,10 @@ void handle_mkd(int client_socket, const char *path, DataConnection *data_conn) 
             }
         }
         *dst = '\0';
-        snprintf(response, sizeof(response), PATHNAME_CREATED, escaped_path);
+        // print the escaped path - root directory
+        //relative_path = full_path + strlen(data_conn->root);
+        snprintf(response, sizeof(response), PATHNAME_CREATED, (resolved_path + strlen(data_conn->root)));
+        //snprintf(response, sizeof(response), PATHNAME_CREATED, escaped_path);
         send_message(client_socket, response);
         free(escaped_path);
     } else {
