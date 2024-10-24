@@ -146,3 +146,14 @@ int remove_callback(const char *fpath, const struct stat *sb, int typeflag, stru
         perror(fpath);
     return rv;
 }
+
+
+
+// Function to get the basename of a path
+const char* get_basename(const char* path) {
+    const char* base = strrchr(path, '/'); // Find the last occurrence of '/'
+    if (base) {
+        return base + 1; // Return the substring after the last '/'
+    }
+    return path; // If no '/' is found, return the original path
+}

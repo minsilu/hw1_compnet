@@ -449,6 +449,7 @@ void handle_list(int client_socket, const char *path, DataConnection *data_conn)
     struct dirent *entry;
     struct stat file_stat;
     char file_info[BUFFER_SIZE];
+    char file_path[BUFFER_SIZE];
     char time_str[20];
     char permissions[11];
     
@@ -482,7 +483,7 @@ void handle_list(int client_socket, const char *path, DataConnection *data_conn)
 
     // Resolve the path (remove ".." and "." components)
     if (realpath(full_path, resolved_path) == NULL) {
-        send_message(client_socket, CWD_FAILED);
+        send_message(client_socket, INVALID_PATH);
         close(data_socket);
         return;
     }
@@ -494,77 +495,126 @@ void handle_list(int client_socket, const char *path, DataConnection *data_conn)
         return;
     }
 
-    // Open the directory
-    dir = opendir(resolved_path);
-    if (dir == NULL) {
-        send_message(client_socket, INVALID_PATH);
-        close(data_socket);
-        return;
-    }
+    // Check if the path is a file or directory
+    if (stat(resolved_path, &file_stat) == 0) {
+        // Send initial response indicating the server is ready to receive the directory
+        char response[BUFFER_SIZE];
+        snprintf(response, sizeof(response), FILE_STATUS_OK, path);
+        send_message(client_socket, response);
 
-    // Send initial response indicating the server is ready to receive the directory
-    char response[BUFFER_SIZE];
-    snprintf(response, sizeof(response), FILE_STATUS_OK, path);
-    send_message(client_socket, response);
+        //printf("Parsed path: %s\n", resolved_path);
 
-    // Read and send directory entries
-    while ((entry = readdir(dir)) != NULL) {
-        char file_path[BUFFER_SIZE];
-        snprintf(file_path, sizeof(file_path), "%s/%s", resolved_path, entry->d_name);
+        if (S_ISDIR(file_stat.st_mode)) {
+            dir = opendir(resolved_path);
+            if (dir == NULL) {
+                send_message(client_socket, INVALID_PATH);
+                close(data_socket);
+                return;
+            }
+            //printf("Listing directory: %s\n", resolved_path);
+            // Read and send directory entries
+            while ((entry = readdir(dir)) != NULL) {
+                snprintf(file_path, sizeof(file_path), "%s/%s", resolved_path, entry->d_name);
 
-        if (stat(file_path, &file_stat) == 0) {
-            // strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M", localtime(&file_stat.st_mtime));
-            
-            // snprintf(file_info, sizeof(file_info), "+%s,%s%s,%lld\r\n",
-            //          entry->d_name,
-            //          S_ISDIR(file_stat.st_mode) ? "dir" : "file",
-            //          S_ISDIR(file_stat.st_mode) ? "" : ",r",
-            //          (long long)file_stat.st_size);
-        // Prepare the output format similar to 'ls -l'
+                if (stat(file_path, &file_stat) == 0) {
+                    strftime(time_str, sizeof(time_str), "%b %d %H:%M", localtime(&file_stat.st_mtime));
+
+                    // Get file permissions
+                    snprintf(permissions, sizeof(permissions), "%c%c%c%c%c%c%c%c%c%c",
+                            S_ISDIR(file_stat.st_mode) ? 'd' : '-',
+                            (file_stat.st_mode & S_IRUSR) ? 'r' : '-',
+                            (file_stat.st_mode & S_IWUSR) ? 'w' : '-',
+                            (file_stat.st_mode & S_IXUSR) ? 'x' : '-',
+                            (file_stat.st_mode & S_IRGRP) ? 'r' : '-',
+                            (file_stat.st_mode & S_IWGRP) ? 'w' : '-',
+                            (file_stat.st_mode & S_IXGRP) ? 'x' : '-',
+                            (file_stat.st_mode & S_IROTH) ? 'r' : '-',
+                            (file_stat.st_mode & S_IWOTH) ? 'w' : '-',
+                            (file_stat.st_mode & S_IXOTH) ? 'x' : '-');
+
+                    // Get the owner and group names
+                    struct passwd *pw = getpwuid(file_stat.st_uid);
+                    struct group  *gr = getgrgid(file_stat.st_gid);
+                    const char *owner = pw ? pw->pw_name : "unknown";
+                    const char *group = gr ? gr->gr_name : "unknown";
+
+                    // Format the file information
+                    snprintf(file_info, sizeof(file_info), "%s %2d %s %s %8lld %s %s\r\n",
+                            permissions, file_stat.st_nlink, owner, group,
+                            (long long)file_stat.st_size, time_str, entry->d_name);
+
+                    if (send(data_socket, file_info, strlen(file_info), 0) < 0) {
+                        if (errno == EPIPE || errno == ECONNRESET) {
+                            send_message(client_socket, TCP_BROKEN);
+                        } else {
+                            send_message(client_socket, ACTION_ABORTED);
+                        }
+                        closedir(dir);
+                        close(data_socket);
+                        data_conn->pasv_fd = -1;
+                        return;
+                    }                    
+                }
+                
+            }
+        } else {
+            printf("Sending file: %s\n", resolved_path);
             strftime(time_str, sizeof(time_str), "%b %d %H:%M", localtime(&file_stat.st_mtime));
 
-            // Get file permissions
+            printf("Permissions\n");
             snprintf(permissions, sizeof(permissions), "%c%c%c%c%c%c%c%c%c%c",
-                    S_ISDIR(file_stat.st_mode) ? 'd' : '-',
-                    (file_stat.st_mode & S_IRUSR) ? 'r' : '-',
-                    (file_stat.st_mode & S_IWUSR) ? 'w' : '-',
-                    (file_stat.st_mode & S_IXUSR) ? 'x' : '-',
-                    (file_stat.st_mode & S_IRGRP) ? 'r' : '-',
-                    (file_stat.st_mode & S_IWGRP) ? 'w' : '-',
-                    (file_stat.st_mode & S_IXGRP) ? 'x' : '-',
-                    (file_stat.st_mode & S_IROTH) ? 'r' : '-',
-                    (file_stat.st_mode & S_IWOTH) ? 'w' : '-',
-                    (file_stat.st_mode & S_IXOTH) ? 'x' : '-');
+                     S_ISDIR(file_stat.st_mode) ? 'd' : '-',
+                     (file_stat.st_mode & S_IRUSR) ? 'r' : '-',
+                     (file_stat.st_mode & S_IWUSR) ? 'w' : '-',
+                     (file_stat.st_mode & S_IXUSR) ? 'x' : '-',
+                     (file_stat.st_mode & S_IRGRP) ? 'r' : '-',
+                     (file_stat.st_mode & S_IWGRP) ? 'w' : '-',
+                     (file_stat.st_mode & S_IXGRP) ? 'x' : '-',
+                     (file_stat.st_mode & S_IROTH) ? 'r' : '-',
+                     (file_stat.st_mode & S_IWOTH) ? 'w' : '-',
+                     (file_stat.st_mode & S_IXOTH) ? 'x' : '-');
 
-            // Get the number of links (for directories, this is usually 2 + number of subdirectories)
-            int num_links = file_stat.st_nlink;
-
+            printf("Owner and group \n");
             // Get the owner and group names
             struct passwd *pw = getpwuid(file_stat.st_uid);
             struct group  *gr = getgrgid(file_stat.st_gid);
             const char *owner = pw ? pw->pw_name : "unknown";
             const char *group = gr ? gr->gr_name : "unknown";
 
+            printf("File information \n");
             // Format the file information
-            snprintf(file_info, sizeof(file_info), "%s %2d %s %s %8lld %s %s\r\n",
-                    permissions, num_links, owner, group,
-                    (long long)file_stat.st_size, time_str, entry->d_name);
+            int ret = snprintf(file_info, sizeof(file_info), "%s %2d %s %s %8lld %s %s\r\n",
+                     permissions, file_stat.st_nlink, owner, group,
+                     (long long)file_stat.st_size, time_str, get_basename(resolved_path));
 
+            
+if (ret < 0) {
+    perror("snprintf failed");
+    close(data_socket);
+    return;
+} else if (ret >= sizeof(file_info)) {
+    fprintf(stderr, "Warning: Output truncated. Buffer size: %zu, Output size: %d\n", sizeof(file_info), ret);
+    close(data_socket);
+    return;
+}
+            printf("Sending file: \n");
             if (send(data_socket, file_info, strlen(file_info), 0) < 0) {
                 if (errno == EPIPE || errno == ECONNRESET) {
                     send_message(client_socket, TCP_BROKEN);
-                }
-                else {
+                } else {
                     send_message(client_socket, ACTION_ABORTED);
                 }
-                closedir(dir);
                 close(data_socket);
                 data_conn->pasv_fd = -1;
                 return;
             }
         }
-    }
 
+    } else {
+        send_message(client_socket, INVALID_PATH);
+        close(data_socket);
+        return;
+    }
     closedir(dir);
     close(data_socket);
     data_conn->pasv_fd = -1;
