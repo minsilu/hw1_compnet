@@ -1,0 +1,6 @@
+#!/usr/bin/env python3
+import sys
+from client import main  # Adjust this import based on your client structure
+
+if __name__ == "__main__":
+    main()  # Call the main function of your client

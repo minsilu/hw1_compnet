@@ -48,8 +48,8 @@ class TestClient:
 
 
     def __del__(self):
-        if os.path.exists(self.logfilename):
-            os.remove(self.logfilename)
+        # if os.path.exists(self.logfilename):  ##
+        #     os.remove(self.logfilename)
         if self.new_dir and os.path.exists(self.server_root_dir):
             # os.rmdir(self.server_root_dir)
             shutil.rmtree(self.server_root_dir)
@@ -58,7 +58,7 @@ class TestClient:
     # run a standard FTP server
     def run_std_server(self):
         with open(self.logfilename, "w") as logfile:
-            self.server = subprocess.Popen(["python", "std_server.py", self.server_root_dir, str(self.server_port)],
+            self.server = subprocess.Popen(["/usr/bin/python3", "std_server.py", self.server_root_dir, str(self.server_port)], ## change to python3 here
                                             stdin=subprocess.PIPE,
                                             stdout=logfile,
                                             stderr=logfile,
@@ -258,11 +258,23 @@ class TestClient:
         
         return credit
     
+    def wait_for_server(self, port, timeout=10): #
+       start_time = time.time()
+       while time.time() - start_time < timeout:
+           try:
+               ftp = FTP()
+               ftp.connect('127.0.0.1', port)
+               ftp.quit()  # If we can connect and quit, the server is ready
+               return True
+           except Exception:
+               time.sleep(0.1)  # Wait a bit before trying again
+       return False
     
     def test_public(self):
         # run a standard FTP server
         self.run_std_server()
         time.sleep(1)
+        
         # run your client
         self.run_client()
         # reading client's output
