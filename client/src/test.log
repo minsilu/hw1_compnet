@@ -1,12 +1,12 @@
 /home/mslu/.local/lib/python3.10/site-packages/pyftpdlib/authorizers.py:111: RuntimeWarning: write permissions assigned to anonymous user.
   self._check_permissions(username, perm)
-[I 2024-10-24 18:23:24] concurrency model: async
-[I 2024-10-24 18:23:24] masquerade (NAT) address: None
-[I 2024-10-24 18:23:24] passive ports: None
-[I 2024-10-24 18:23:24] >>> starting FTP server on 127.0.0.1:10021, pid=58127 <<<
-[I 2024-10-24 18:23:25] 127.0.0.1:54968-[] FTP session opened (connect)
-[I 2024-10-24 18:23:26] 127.0.0.1:54968-[anonymous] USER 'anonymous' logged in.
-[I 2024-10-24 18:23:26] 127.0.0.1:54968-[anonymous] MKD /mnt/e/Courses_taking/Computer Networks/For Students/2019013240/client/src/client_test/test_DcanDEzUFx 257
-[I 2024-10-24 18:23:26] 127.0.0.1:54968-[anonymous] CWD /mnt/e/Courses_taking/Computer Networks/For Students/2019013240/client/src/client_test/test_DcanDEzUFx 250
-[I 2024-10-24 18:23:27] 127.0.0.1:54968-[anonymous] RETR /mnt/e/Courses_taking/Computer Networks/For Students/2019013240/client/src/client_test/test_DcanDEzUFx/test_retr.data completed=1 bytes=80000 seconds=0.155
-[I 2024-10-24 18:23:28] 127.0.0.1:54968-[anonymous] RETR /mnt/e/Courses_taking/Computer Networks/For Students/2019013240/client/src/client_test/test_DcanDEzUFx/test_retr_2.data completed=1 bytes=80000 seconds=0.139
+[I 2024-10-25 21:54:54] concurrency model: async
+[I 2024-10-25 21:54:54] masquerade (NAT) address: None
+[I 2024-10-25 21:54:54] passive ports: None
+[I 2024-10-25 21:54:54] >>> starting FTP server on 127.0.0.1:10021, pid=113343 <<<
+[I 2024-10-25 21:54:55] 127.0.0.1:50434-[] FTP session opened (connect)
+[I 2024-10-25 21:54:56] 127.0.0.1:50434-[anonymous] USER 'anonymous' logged in.
+[I 2024-10-25 21:54:56] 127.0.0.1:50434-[anonymous] MKD /mnt/e/Courses_taking/Computer Networks/For Students/2019013240/client/src/client_test/test_vWUeYuWwnu 257
+[I 2024-10-25 21:54:56] 127.0.0.1:50434-[anonymous] CWD /mnt/e/Courses_taking/Computer Networks/For Students/2019013240/client/src/client_test/test_vWUeYuWwnu 250
+[I 2024-10-25 21:54:57] 127.0.0.1:50434-[anonymous] RETR /mnt/e/Courses_taking/Computer Networks/For Students/2019013240/client/src/client_test/test_vWUeYuWwnu/test_retr.data completed=1 bytes=80000 seconds=0.148
+[I 2024-10-25 21:54:58] 127.0.0.1:50434-[anonymous] RETR /mnt/e/Courses_taking/Computer Networks/For Students/2019013240/client/src/client_test/test_vWUeYuWwnu/test_retr_2.data completed=1 bytes=80000 seconds=0.16

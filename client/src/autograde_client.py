@@ -48,8 +48,8 @@ class TestClient:
 
 
     def __del__(self):
-        # if os.path.exists(self.logfilename):  ##
-        #     os.remove(self.logfilename)
+        if os.path.exists(self.logfilename):  ##
+            os.remove(self.logfilename)
         if self.new_dir and os.path.exists(self.server_root_dir):
             # os.rmdir(self.server_root_dir)
             shutil.rmtree(self.server_root_dir)

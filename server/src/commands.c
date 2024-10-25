@@ -452,6 +452,7 @@ void handle_list(int client_socket, const char *path, DataConnection *data_conn)
     char file_path[BUFFER_SIZE];
     char time_str[20];
     char permissions[11];
+
     
     // Check if the data connection is established
     if (data_conn->mode == MODE_NONE) {
@@ -511,7 +512,6 @@ void handle_list(int client_socket, const char *path, DataConnection *data_conn)
                 close(data_socket);
                 return;
             }
-            //printf("Listing directory: %s\n", resolved_path);
             // Read and send directory entries
             while ((entry = readdir(dir)) != NULL) {
                 snprintf(file_path, sizeof(file_path), "%s/%s", resolved_path, entry->d_name);
@@ -557,11 +557,10 @@ void handle_list(int client_socket, const char *path, DataConnection *data_conn)
                 }
                 
             }
+            closedir(dir);
         } else {
-            printf("Sending file: %s\n", resolved_path);
             strftime(time_str, sizeof(time_str), "%b %d %H:%M", localtime(&file_stat.st_mtime));
 
-            printf("Permissions\n");
             snprintf(permissions, sizeof(permissions), "%c%c%c%c%c%c%c%c%c%c",
                      S_ISDIR(file_stat.st_mode) ? 'd' : '-',
                      (file_stat.st_mode & S_IRUSR) ? 'r' : '-',
@@ -574,30 +573,20 @@ void handle_list(int client_socket, const char *path, DataConnection *data_conn)
                      (file_stat.st_mode & S_IWOTH) ? 'w' : '-',
                      (file_stat.st_mode & S_IXOTH) ? 'x' : '-');
 
-            printf("Owner and group \n");
+            
+            int num_links = file_stat.st_nlink;
+            const char *base_name = get_basename(full_path);
+
             // Get the owner and group names
             struct passwd *pw = getpwuid(file_stat.st_uid);
             struct group  *gr = getgrgid(file_stat.st_gid);
             const char *owner = pw ? pw->pw_name : "unknown";
             const char *group = gr ? gr->gr_name : "unknown";
 
-            printf("File information \n");
-            // Format the file information
-            int ret = snprintf(file_info, sizeof(file_info), "%s %2d %s %s %8lld %s %s\r\n",
-                     permissions, file_stat.st_nlink, owner, group,
-                     (long long)file_stat.st_size, time_str, get_basename(resolved_path));
+            snprintf(file_info, sizeof(file_info), "%s %2d %s %s %8lld %s %s\r\n",
+                     permissions, num_links, owner, group,
+                     (long long)file_stat.st_size, time_str, base_name);
 
-            
-if (ret < 0) {
-    perror("snprintf failed");
-    close(data_socket);
-    return;
-} else if (ret >= sizeof(file_info)) {
-    fprintf(stderr, "Warning: Output truncated. Buffer size: %zu, Output size: %d\n", sizeof(file_info), ret);
-    close(data_socket);
-    return;
-}
-            printf("Sending file: \n");
             if (send(data_socket, file_info, strlen(file_info), 0) < 0) {
                 if (errno == EPIPE || errno == ECONNRESET) {
                     send_message(client_socket, TCP_BROKEN);
@@ -615,7 +604,7 @@ if (ret < 0) {
         close(data_socket);
         return;
     }
-    closedir(dir);
+    
     close(data_socket);
     data_conn->pasv_fd = -1;
     send_message(client_socket, TRANSFER_COMPLETE);

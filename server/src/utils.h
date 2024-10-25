@@ -38,6 +38,7 @@ ssize_t send_file(int socket, int file_fd, ssize_t count, int speed);
 ssize_t receive_file(int socket, int file_fd, int speed);
 ssize_t get_file_size(const char *filename);
 int remove_callback(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftwbuf);
+const char* get_basename(const char* path);
 //int remove_callback(const char *fpath, const struct stat *sb __attribute__((unused)),
 
 
