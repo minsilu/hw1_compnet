@@ -3,7 +3,11 @@ import os
 import sys
 import argparse
 import random
-
+from datetime import datetime
+import time
+import re
+import fnmatch
+import glob
 
 class FTPClient:
     def __init__(self, host, port=21):
@@ -60,7 +64,7 @@ class FTPClient:
         self.log(line)
         return line
         
-    def login(self, username, password):
+    def login(self, username = 'anonymous', password = 'pass@youremail'):
         self.send_command(f"USER {username}")
         self.send_command(f"PASS {password}")
 
@@ -68,7 +72,6 @@ class FTPClient:
         response = self.send_command("PASV")
         try:
             if response.startswith('227'):
-                import re
                 numbers = re.findall(r'\d+', response)
                 port = (int(numbers[-2]) << 8) + int(numbers[-1])
                 self.data_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -146,6 +149,11 @@ class FTPClient:
         if not filename:
             self.log("Error: Need local file name")
             return "error"
+        if not os.path.isfile(filename):
+            self.log(f"Error: Local file {filename} does not exist")
+            return "error"
+
+        # Check if the file exists
         try:
             with open(filename, 'rb') as f:
                 pass  
@@ -192,15 +200,18 @@ class FTPClient:
 
         return response
 
-    def append_file(self, filename, a=0):
+    def append_file(self, filename, offset=0):
         if not filename:
             self.log("Error: Need local file name")
+            return "error"
+        if not os.path.isfile(filename):
+            self.log(f"Error: Local file {filename} does not exist")
             return "error"
 
         # Check if the file exists and get its size
         try:
             file_size = os.path.getsize(filename)
-            if a > file_size:
+            if offset > file_size:
                 self.log("Error: Starting position exceeds file size.")
                 return "error"
         except Exception as e:
@@ -223,7 +234,7 @@ class FTPClient:
         try:
             with open(filename, 'rb') as file:
                 # Move to the specified starting position
-                file.seek(a)
+                file.seek(offset)
                 while True:
                     data = file.read(8192)  
                     if not data:
@@ -236,9 +247,9 @@ class FTPClient:
             if self.data_sock:
                 self.data_sock.close()
                 self.data_sock = None
+            self.transfer_type = None
 
         response = self.read_response()
-        self.transfer_type = None  # Reset transfer type
 
         if "226" not in response:
             self.log("Error: File append failed.")
@@ -335,40 +346,74 @@ class FTPClient:
             return "error"
 
         if local_path is None:
-            local_path = self.local_path 
+            local_path = self.local_path
+            
         base_name = os.path.basename(remote_path)
-
-        file_path = os.path.join(local_path, base_name)
+        local_file = os.path.join(local_path, base_name)
+        
         # Check if the local file exists
-        if os.path.exists(file_path):
-            local_size = os.path.getsize(file_path)
-            local_mtime = os.path.getmtime(file_path)
-
-            # Get remote file size and modification time
+        if os.path.exists(local_file):
             response = self.ls_remote_files(remote_path)
-            remote_info_lines = response.splitlines()
-            
-            remote_size = None
-            remote_mtime = None
-            for line in remote_info_lines:
-                # Check if the line contains the target file name
-                if base_name in line:
-                    parts = line.split()
-                    remote_size = int(parts[4])  
-                    remote_mtime = ' '.join(parts[5:8])  
-                    break
-            
-            # Check conditions for resuming transfer
-            if (remote_size is not None) and (local_size < remote_size) and (local_mtime < remote_mtime):
-                self.send_command_with_params("REST", local_size)  # Set the restart position
-                return self.get_remote_file(remote_path, local_path = local_path, write_type = self.write_type, set_rest = False)
+            # Check if the remote file exists
+            if "226" in response:
+                local_size = os.path.getsize(local_file)
+                local_mtime_str = time.strftime('%b %d %H:%M', time.localtime(os.path.getmtime(local_file)))
+                
+                remote_info_lines = response.splitlines()
+                print('show remote info format:',remote_info_lines)
+                for line in remote_info_lines:
+                    # Check if the line contains the target file name
+                    if base_name in line:
+                        parts = line.split()
+                        print('show remote file info format:',parts)
+                        remote_size = int(parts[4])  
+                        remote_mtime_str = ' '.join(parts[5:8])  
+                        local_mtime_dt = datetime.strptime(local_mtime_str, '%b %d %H:%M')
+                        remote_mtime_dt = datetime.strptime(remote_mtime_str, '%b %d %H:%M')
+                        break
+                # Check conditions for resuming transfer
+                if (local_size < remote_size) and (local_mtime_dt > remote_mtime_dt):
+                    self.send_command_with_params("REST", local_size)  # Set the restart position
+                    return self.get_remote_file(remote_path, local_path = local_path, write_type = self.write_type, set_rest = False)
 
         # If conditions are not met, perform a full transfer
         return self.get_remote_file(remote_path, local_path = local_path)
+  
+    def mget_remote_file(self, remote_files):
+        if not remote_files:
+            self.log("Error: No remote files specified.")
+            return "error"
 
-    def put_local_file(self, local_path):
+        remote_files = remote_files.strip().split()
+        all_files = []
+        for remote_file in remote_files:
+            if "*" in remote_file:
+                response = self.ls_remote_files('.')
+                for line in response.splitlines():
+                    if line and not re.match(r'^\d+', line) and not line.startswith("d"): 
+                        parts = line.split()
+                        filename = parts[-1]
+                        if fnmatch.fnmatch(filename, remote_file): 
+                            all_files.append(filename)
+            else:
+                all_files.append(remote_file)
+    
+        for remote_file in all_files:
+            # Prompt for confirmation
+            confirm = input(f"Do you want to download '{remote_file}'? (y/n): ").strip().lower()
+            if confirm == 'y':
+                response = self.get_remote_file(remote_file)
+                if response == "error":
+                    self.log(f"Failed to download '{remote_file}'.")
+            else:
+                self.log(f"Skipped '{remote_file}'.")
+                
+    def put_local_file(self, local_path, append = False, offset = 0):
         if not local_path:
             self.log("Error: Need local file name")
+            return "error"
+        if not os.path.isfile(local_path):
+            self.log(f"Error: Local file {local_path} does not exist")
             return "error"
 
         if self.transfer_type == 'PORT':
@@ -387,6 +432,9 @@ class FTPClient:
             self.active_mode(ip, port)
         else:
             self.passive_mode()
+        
+        if append:
+            self.append_file(local_path, offset)
 
         return self.store_file(local_path)
 
@@ -394,28 +442,59 @@ class FTPClient:
         if not local_path:
             self.log("Error: Need local file name")
             return "error"
-
+        if not os.path.isfile(local_path):
+            self.log(f"Error: Local file {local_path} does not exist")
+            return "error"
+        
+        base_name = os.path.basename(os.path.basename(local_path))
         # Check if the remote file exists
-        response = self.send_command(f"LIST {local_path}")
-        if response.startswith('550'):
-            # File does not exist, perform a full transfer
-            return self.put_local_file(local_path)
+        response = self.ls_remote_files(base_name)
+        if "226" in response:
+            local_size = os.path.getsize(local_path)
+            local_mtime_str = time.strftime('%b %d %H:%M', time.localtime(os.path.getmtime(local_path)))
 
-        # Get remote file size and modification time
-        remote_info = response.splitlines()[-1]  # Get the last line for the file info
-        remote_size = int(remote_info.split()[4])  # Assuming size is in the 5th column
-        remote_mtime = remote_info.split()[5]  # Modify this based on your LIST output format
-
-        local_size = os.path.getsize(local_path)
-        local_mtime = os.path.getmtime(local_path)
-
-        # Check conditions for resuming transfer
-        if remote_size < local_size and remote_mtime < local_mtime:
-            self.send_command(f"APPE {local_path}")  # Append to the existing file
-            return self.store_file(local_path)
+            remote_info_lines = response.splitlines()
+            print('show remote response format:',remote_info_lines)
+            
+            for line in remote_info_lines:
+                # Check if the line contains the target file name
+                if base_name in line:
+                    parts = line.split()
+                    print('show remote file info format:',parts)
+                    remote_size = int(parts[4])  
+                    remote_mtime_str = ' '.join(parts[5:8])  
+                    local_mtime_dt = datetime.strptime(local_mtime_str, '%b %d %H:%M')
+                    remote_mtime_dt = datetime.strptime(remote_mtime_str, '%b %d %H:%M')
+                    break
+            # Check conditions for resuming transfer
+            if remote_size < local_size and remote_mtime_dt > local_mtime_dt:
+                return self.put_local_file(local_path, append = True, offset = remote_size)
 
         # If conditions are not met, perform a full transfer
         return self.put_local_file(local_path)
+
+    def mput_local_file(self, local_files):
+        if not local_files:
+            self.log("Error: No local files specified.")
+            return "error"
+
+        local_files = local_files.strip().split()
+        all_files = []
+        for local_file in local_files:
+            if "*" in local_file:
+                all_files.extend(glob.glob(local_file))
+            else:
+                all_files.append(local_file)
+
+        for local_file in all_files:
+            # Prompt for confirmation
+            confirm = input(f"Do you want to upload '{local_file}'? (y/n): ").strip().lower()
+            if confirm == 'y':
+                response = self.put_local_file(local_file)
+                if response == "error":
+                    self.log(f"Failed to upload '{local_file}'.")
+            else:
+                self.log(f"Skipped '{local_file}'.")
 
     def close_connection(self):
         self.send_command("QUIT")
@@ -461,12 +540,69 @@ class FTPClient:
                 self.log(f"Error ls local files: {e}")
         self.log(' '.join(list_of_files))
 
+    def show_help(self, command=None):
+        commands_info = {
+            'login': 'to login to the server',
+            'cd': 'to change the current directory on the server',
+            'pwd': 'to find out the current directory on the server',
+            'rmdir': 'to remove a directory on the server',
+            'mkdir': 'to create a directory on the server',
+            'delete': 'to delete a file on the server',
+            'quit': 'to exit the FTP environment',
+            'bye': 'to exit the FTP environment',
+            'close': 'to terminate a session with the server',
+            'open': 'to open a new FTP session',
+            
+            'get': 'to download a file from the server',
+            'reget': 'to resume downloading a file from the server',
+            'mget': 'to download multiple files from the server',
+            'put': 'to upload a file to the server',
+            'reput': 'to resume uploading a file to the server',
+            'mput': 'to upload multiple files to the server',
+            'ls': 'to list files in a specified directory on the server',
+            
+            'lcd': 'to change the current directory on the local machine',
+            'lpwd': 'to print the current working directory on the local machine',
+            'lls': 'to list files in a specified directory on the local machine',
+            'help': 'to request a list of all available FTP commands',
+            
+            'USER': 'Send the username to the server for authentication',
+            'PASS': 'Send the password to the server for authentication',
+            'SYST': 'Request the system type of the server',
+            'PWD': 'Print the current working directory on the server',
+            'QUIT': 'Terminate the FTP connection',
+            'MKD': 'Create a directory on the server',
+            'CWD': 'Change the current directory on the server',
+            'RMD': 'Remove a directory on the server',
+            'DELE': 'Delete a file on the server',
+            'REST': 'Resume a file transfer from a specified position',
+            'TYPE': 'Set the transfer type (ASCII or binary)',
+            'PASV': 'Enter passive mode for data transfer',
+            'PORT': 'Enter active mode for data transfer',
+            'RETR': 'Download a file from the server',
+            'STOR': 'Upload a file to the server',
+            'LIST': 'List files in the current directory on the server',
+            'APPE': 'Append data to a file on the server',
+        }
+
+        if command:
+            command = command.lower()
+            if command in commands_info:
+                self.log(f"{command}: {commands_info[command]}")
+            else:
+                self.log(f"Error: No information available for command '{command}'.")
+        else:
+            self.log("Commands may be abbreviated. Commands are:")
+            for cmd in commands_info.keys().sort():
+                self.log(f"  {cmd}")
+                
 def check_sencond_parameter(parameter):
     if len(parameter.split(' ', 1))>1:
         return parameter.split(' ', 1)[1]
     else:
         return None
-   
+
+
 def main():
     parser = argparse.ArgumentParser(description='FTP Client')
     parser.add_argument('-ip', type=str, default='127.0.0.1', help='Server IP address')
@@ -525,13 +661,19 @@ def main():
         elif verb == 'reput':
             client.reput_local_file(command.split(' ', 1)[1])
         elif verb == 'mget':
-            break
+            client.mget_remote_file(command.split(' ', 1)[1])
         elif verb == 'mput':
-            break
+            client.mput_local_file(command.split(' ', 1)[1])
         elif verb == 'help':
-            break
-    
-        
+            client.show_help()
+        elif verb == 'login':
+            if len(command.split(' ', 1))>1:
+                if len(command.split(' ', 1)[1].split(' '))>1:
+                    client.login(command.split(' ', 1)[1].split(' ')[0], command.split(' ', 1)[1].split(' ')[1])
+                else:
+                    client.login(command.split(' ', 1)[1].split(' ')[0])
+            else:
+                client.login()
         else:
             client.log(f"Error: Invalid command: {command}")
 

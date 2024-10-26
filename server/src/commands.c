@@ -197,9 +197,17 @@ void handle_retr(int client_socket, const char *filename, DataConnection *data_c
         }
     }
 
+    // check if it is a regular file
+    struct stat file_stat;
+    if (stat(filepath, &file_stat) != 0 || !S_ISREG(file_stat.st_mode)) {
+        send_message(client_socket, FILE_NOT_EXIST); 
+        close(data_socket); 
+        data_conn->pasv_fd = -1;
+        return;
+    }
+
     // Open the file in binary mode
     int file_fd = open(filepath, O_RDONLY);
-    //int file_fd = fopen(filepath, "rb");
     if (file_fd < 0) {
         if (errno == ENOENT) {
             send_message(client_socket, FILE_NOT_EXIST);
@@ -212,6 +220,8 @@ void handle_retr(int client_socket, const char *filename, DataConnection *data_c
         data_conn->pasv_fd = -1;
         return;
     }
+
+
 
     // Send initial response indicating the server is ready to send the file
     char response[BUFFER_SIZE];
