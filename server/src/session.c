@@ -80,7 +80,7 @@ void handle_client(int client_socket, const char *root) {
             else if(strcmp(command, "PORT") == 0) handle_port(client_socket, arg, &data_conn);
             else if(strcmp(command, "PASV") == 0) handle_pasv(client_socket, &data_conn);
             else if(strcmp(command, "RETR") == 0) handle_retr(client_socket, arg, &data_conn);
-            else if(strcmp(command, "REST") == 0) handle_retr(client_socket, arg, &data_conn);
+            else if(strcmp(command, "REST") == 0) handle_rest(client_socket, arg, &data_conn);
             else if(strcmp(command, "STOR") == 0) handle_stor(client_socket, arg, &data_conn);
             else if(strcmp(command, "APPE") == 0) handle_appe(client_socket, arg, &data_conn);
             else if(strcmp(command, "LIST") == 0) handle_list(client_socket, arg, &data_conn);

@@ -28,9 +28,9 @@ class FTPClient:
             'mkdir': 'MKD',
         }
    
-    def log(self, message):
+    def log(self, message,end="\n"):
         # TODO: This method can be modified to log messages to a GUI or a file
-        print(message)
+        print(message,end=end)
 
     def connect(self):
         try:
@@ -54,13 +54,13 @@ class FTPClient:
     def read_response(self):
         f = self.sock.makefile()
         line = f.readline().strip() 
-        if line[3] == '-':
-            code = line[:3]
-            while True:
-                next_line = f.readline().strip()
-                line = line + next_line
-                if next_line[3] != '-' or next_line[:3] != code:
-                    break
+        # if line[3] == '-':
+        #     code = line[:3]
+        #     while True:
+        #         next_line = f.readline().strip()
+        #         line = line + next_line
+        #         if next_line[3] != '-' or next_line[:3] != code:
+        #             break
         self.log(line)
         return line
         
@@ -79,7 +79,7 @@ class FTPClient:
                 self.transfer_type = 'PASV'
                 return response
             else:
-                self.log(f"Error: Failed to establish passive mode - {response}")
+                self.log(f"{response}")
         except Exception as e:
             self.log(f"Error: Failed to establish passive mode - {e}")
             return "error"
@@ -514,7 +514,7 @@ class FTPClient:
         self.local_path = os.getcwd()
         self.log("Connection closed.")
 
-    def open_connection(self, host="127.0.0.1", port=21):
+    def open_connection(self, host, port):
         self.host = host
         self.port = port
         self.connect()
@@ -586,22 +586,26 @@ class FTPClient:
         }
 
         if command:
-            command = command.lower()
             if command in commands_info:
                 self.log(f"{command}: {commands_info[command]}")
             else:
                 self.log(f"Error: No information available for command '{command}'.")
         else:
-            self.log("Commands may be abbreviated. Commands are:")
-            for cmd in commands_info.keys().sort():
-                self.log(f"  {cmd}")
+            for cmd in sorted(commands_info.keys()): 
+                self.log(f"    {cmd}",end="")
+            self.log('',end="\n")
                 
-def check_sencond_parameter(parameter):
+def get_sencond_parameter(parameter):
     if len(parameter.split(' ', 1))>1:
         return parameter.split(' ', 1)[1]
     else:
         return None
-
+def check_parameter(line):
+    if len(line.split(' ', 1))>1:
+        return True
+    else:
+        print("Error: Missing parameters.")
+        return False
 
 def main():
     parser = argparse.ArgumentParser(description='FTP Client')
@@ -616,57 +620,73 @@ def main():
         command = input().strip() ## "ftp> "
         verb = command.split(' ', 1)[0]
         if verb in client.command_map:
-            verb = client.command_map[verb]  # cd, pwd, rmdir, delete, mkdir
-        # params = input_data.split(" ", 1)[1]
-        if verb in ['USER','PASS','SYST','PWD','QUIT']:
+            verb = client.command_map[verb]  # cd, pwd, rmdir, delete, mkdir #P
+ 
+        if verb in ['USER','PASS','SYST','PWD','QUIT','ABOR']: #P
             client.send_command(command)
-        elif verb in['MKD','CWD','RMD','DELE','REST','TYPE']:
-            client.send_command_with_params(verb, command.split(' ', 1)[1])
-            # TODO: if it is necessary to need a flag to change write mode to ab when type rest
-        elif verb == 'PASV':
+        elif verb in['MKD','CWD','RMD','DELE','REST','TYPE']: #P
+            if (check_parameter(command)):
+                client.send_command_with_params(verb, command.split(' ', 1)[1])
+        elif verb == 'PASV': #P
             client.passive_mode()
-        elif verb == 'PORT':
-            parts = command.split(' ', 1)[1].split(',')
-            ip = '.'.join(parts[:4])
-            port = (int(parts[4]) << 8) + int(parts[5])
-            client.active_mode(ip, port)
-        elif verb == 'RETR':
-            client.retrieve_file(command.split(' ', 1)[1])
+        elif verb == 'PORT': #P
+            if check_parameter(command):
+                if len(command.split(' ', 1)[1].split(',')) == 6:
+                    parts = command.split(' ', 1)[1].split(',')
+                    ip = '.'.join(parts[:4])
+                    port = (int(parts[4]) << 8) + int(parts[5])
+                    client.active_mode(ip, port)
+                else:
+                    print('Please input like "PORT 127,0,0,1,54,54"')
+        elif verb == 'RETR': 
+            if check_parameter(command):
+                client.retrieve_file(command.split(' ', 1)[1])
         elif verb == 'STOR':
-            client.store_file(command.split(' ', 1)[1])
-        elif verb == 'LIST':
+            if check_parameter(command):
+                client.store_file(command.split(' ', 1)[1])
+        elif verb == 'LIST': ##output have empty line
             client.list_files()
         elif verb == 'APPE':
-            client.append_file(command.split(' ', 1)[1])
-        elif verb.lower() == 'quit' or verb == 'bye':
+            if check_parameter(command):
+                client.append_file(command.split(' ', 1)[1])
+        elif verb == 'quit' or verb == 'bye':
             break
-        elif verb == 'close':   
+        elif verb == 'close':   #P
             client.close_connection()
-        elif verb == 'open':
-            client.open_connection(command.split(' ', 1)[1].split(' ')[0], int(command.split(' ', 1)[1].split(' ')[1]))
+        elif verb == 'open':  #P
+            if check_parameter(command):
+                if check_parameter(command.split(' ', 1)[1]):
+                    client.open_connection(command.split(' ', 1)[1].split(' ')[0], int(command.split(' ', 1)[1].split(' ')[1]))      
         elif verb == 'lcd':
-            client.change_local_directory(command.split(' ', 1)[1])
+            if check_parameter(command):
+                client.change_local_directory(command.split(' ', 1)[1])
         elif verb == 'lpwd':
             client.show_local_path()
         elif verb == 'lls':
             client.ls_local_files()
         elif verb == 'ls':
-            client.ls_remote_files(check_sencond_parameter(command))
+            client.ls_remote_files(get_sencond_parameter(command))
         elif verb ==  'get':
-            client.get_remote_file(command.split(' ', 1)[1].split(' ')[0], local_path = check_sencond_parameter(command.split(' ', 1)[1]))
+            if check_parameter(command.split(' ', 1)[1]):
+                client.get_remote_file(command.split(' ', 1)[1].split(' ')[0], local_path = get_sencond_parameter(command.split(' ', 1)[1]))
         elif verb == 'put':
-            client.put_local_file(command.split(' ', 1)[1])
+            if check_parameter(command.split(' ', 1)[1]):
+                client.put_local_file(command.split(' ', 1)[1])
         elif verb == 'reget':
-            client.reget_remote_file(command.split(' ', 1)[1].split(' ')[0], local_path = check_sencond_parameter(command.split(' ', 1)[1]))
+            if check_parameter(command.split(' ', 1)[1]):
+                client.reget_remote_file(command.split(' ', 1)[1].split(' ')[0], local_path = get_sencond_parameter(command.split(' ', 1)[1]))
         elif verb == 'reput':
-            client.reput_local_file(command.split(' ', 1)[1])
+            if check_parameter(command.split(' ', 1)[1]):
+                client.reput_local_file(command.split(' ', 1)[1])
         elif verb == 'mget':
-            client.mget_remote_file(command.split(' ', 1)[1])
+            if check_parameter(command.split(' ', 1)[1]):
+                client.mget_remote_file(command.split(' ', 1)[1])
         elif verb == 'mput':
-            client.mput_local_file(command.split(' ', 1)[1])
-        elif verb == 'help':
-            client.show_help()
-        elif verb == 'login':
+            if check_parameter(command.split(' ', 1)[1]):
+                client.mput_local_file(command.split(' ', 1)[1])
+        elif verb == 'help':     #p
+            client.show_help(get_sencond_parameter(command))
+        elif verb == 'login':    #p 
             if len(command.split(' ', 1))>1:
                 if len(command.split(' ', 1)[1].split(' '))>1:
                     client.login(command.split(' ', 1)[1].split(' ')[0], command.split(' ', 1)[1].split(' ')[1])
@@ -676,6 +696,9 @@ def main():
                 client.login()
         else:
             client.log(f"Error: Invalid command: {command}")
+
+
+
 
 if __name__ == "__main__":
     main()
