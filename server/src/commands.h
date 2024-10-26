@@ -1,7 +1,6 @@
 #ifndef COMMANDS_H
 #define COMMANDS_H
 #include "utils.h"
-#include <stddef.h>
 
 
 void handle_user(int client_socket, const char *username, SessionState *state, char *stored_username);
@@ -24,7 +23,6 @@ void handle_cwd(int client_socket, const char *path, DataConnection *data_conn);
 void handle_mkd(int client_socket, const char *path, DataConnection *data_conn);
 void handle_rmd(int client_socket, const char *path, DataConnection *data_conn);
 void handle_dele(int client_socket, const char *path, DataConnection *data_conn);
-
 
 void handle_quit(int client_socket, DataConnection *data_conn);
 

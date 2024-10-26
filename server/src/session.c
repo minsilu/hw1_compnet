@@ -2,7 +2,6 @@
 #include "config.h"
 #include "commands.h"
 #include "utils.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,8 +12,6 @@
 void handle_client(int client_socket, const char *root) {
     char buffer[BUFFER_SIZE];
     char username[BUFFER_SIZE] = {0};
-    // int logged_in = 0;
-    // int recv_num = 0;
     SessionState state = STATE_INITIAL;
 
     DataConnection data_conn = {
@@ -34,16 +31,13 @@ void handle_client(int client_socket, const char *root) {
 
     while (1) {
         memset(buffer, 0, BUFFER_SIZE);
-        int valrecv = recv(client_socket, buffer, BUFFER_SIZE, 0); //block here
+        int valrecv = recv(client_socket, buffer, BUFFER_SIZE, 0); 
         if (valrecv <= 0) {
             break;
         }
 
         // Remove newline characters
-        buffer[strcspn(buffer, "\r\n")] = 0; // will it end with /0?
-
-        // test line here
-        //printf("buffer: %s len: %d \n", buffer,(int)strlen(buffer));
+        buffer[strcspn(buffer, "\r\n")] = 0; 
 
         // Parse command
         char *command = strtok(buffer, " ");
@@ -54,6 +48,7 @@ void handle_client(int client_socket, const char *root) {
             send_message(client_socket, SYNTAX_ERROR);
             continue;
         }
+
         for (int i = 0; command[i]; i++) {
             command[i] = toupper((unsigned char)command[i]);
         }
@@ -98,7 +93,6 @@ void handle_client(int client_socket, const char *root) {
                 send_message(client_socket, INVALID_COMMAND);
             }
         } 
-
     }
 
     close(client_socket);

@@ -9,7 +9,6 @@
 
 int main(int argc, char *argv[]) {
 
-    
     int port = DEFAULT_PORT;
     char *root = DEFAULT_ROOT;
 
@@ -41,9 +40,6 @@ int main(int argc, char *argv[]) {
         }
     }
     
-    // // test parsed arguments
-    // printf("Server started on port %d with root path %s\n", port, root);
-
     // start the servering loop
     start_server(port, root);
 

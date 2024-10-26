@@ -1,5 +1,4 @@
 #define _DEFAULT_SOURCE
-//#define _XOPEN_SOURCE 500
 
 #include "utils.h"
 #include "config.h"
@@ -13,7 +12,6 @@
 #include <stdio.h>
 #include <errno.h>
 #include <ftw.h>
-
 
 
 ssize_t send_message(int client_socket, const char *message) {
@@ -88,13 +86,8 @@ ssize_t send_file(int socket, int file_fd, ssize_t count, int speed) {
             bytes_sent += result;
         }
     
-        // Update the offset  
-        //  NOTICE here is a gap, what will happen if you have send but tcp broke in middle, 
-        // the offet here can't reperesent the real offset
-        //bytes_sent += bytes_read;
-
         // Control the speed of sending
-        usleep(speed); // Sleep for a specified time to control speed
+        usleep(speed); 
     }
 
     return bytes_sent;
@@ -147,13 +140,55 @@ int remove_callback(const char *fpath, const struct stat *sb, int typeflag, stru
     return rv;
 }
 
-
-
-// Function to get the basename of a path
 const char* get_basename(const char* path) {
     const char* base = strrchr(path, '/'); // Find the last occurrence of '/'
     if (base) {
         return base + 1; // Return the substring after the last '/'
     }
     return path; // If no '/' is found, return the original path
+}
+
+void resolve_path(const char *input_path, char *resolved_path) {
+    const char *start = input_path;
+    char *dest = resolved_path;
+
+    // Ensure resolved path starts clean
+    *dest = '\0';
+    while (*start) {
+        // Skip multiple slashes
+        if (*start == '/') {
+            // Add a single slash if it's not the start or duplicate
+            if (dest == resolved_path || *(dest - 1) != '/') {
+                *dest++ = '/';
+            }
+            start++;
+        }
+        // Handle "../" and move up one directory
+        else if (strncmp(start, "../", 3) == 0 || (strncmp(start, "..", 2) == 0 && (start[2] == '\0' || start[2] == '/'))) {
+            if (dest > resolved_path + 1) {
+                // Go back to previous slash
+                dest--;
+                while (dest > resolved_path && *(dest - 1) != '/') {
+                    dest--;
+                }
+            }
+            start += (start[2] == '/') ? 3 : 2; // Advance over "../" or ".."
+        }
+        // Handle "./" and just skip
+        else if (strncmp(start, "./", 2) == 0 || (start[0] == '.' && (start[1] == '/' || start[1] == '\0'))) {
+            start += (start[1] == '/') ? 2 : 1; // Skip "./" or "."
+        }
+        // Copy regular characters
+        else {
+            while (*start && *start != '/') {
+                *dest++ = *start++;
+            }
+        }
+    }
+
+    // Remove trailing slashes except for root "/"
+    if (dest > resolved_path + 1 && *(dest - 1) == '/') {
+        dest--;
+    }
+    *dest = '\0';
 }

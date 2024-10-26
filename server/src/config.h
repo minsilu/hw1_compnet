@@ -65,6 +65,4 @@
 #define TYPE_SET_BINARY "200 Type set to I.\r\n"
 #define TYPE_UNKNOWN "200 Unknown type.\r\n"
 
-
-
 #endif // CONFIG_H
