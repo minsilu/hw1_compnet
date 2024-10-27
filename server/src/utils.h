@@ -31,6 +31,7 @@ typedef struct {
 
 // Helper function to send a message to the client
 ssize_t send_message(int client_socket, const char *message);
+int setup_data_connection(DataConnection *data_conn);
 int connect_client(DataConnection *data_conn);
 int is_path_safe(const char *path);
 ssize_t send_file(int socket, int file_fd, ssize_t count, int speed);

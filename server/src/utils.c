@@ -7,7 +7,6 @@
 #include <string.h>
 #include <unistd.h> 
 #include <sys/types.h>
-#include <fcntl.h>
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <errno.h>
@@ -16,6 +15,19 @@
 
 ssize_t send_message(int client_socket, const char *message) {
     return send(client_socket, message, strlen(message), 0);
+}
+
+int setup_data_connection(DataConnection *data_conn) {
+    int data_socket = -1;
+    if (data_conn->mode == MODE_PORT) {
+        data_socket = connect_client(data_conn);
+    } else if (data_conn->mode == MODE_PASV) {
+        data_socket = accept(data_conn->pasv_fd, NULL, NULL);
+        close(data_conn->pasv_fd); // Close the listening socket
+    } else {
+        return -1; 
+    }
+    return data_socket;
 }
 
 int connect_client(DataConnection *data_conn) {

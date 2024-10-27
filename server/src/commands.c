@@ -11,7 +11,6 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <fcntl.h>
 #include <time.h>
 #include <stdlib.h>
 #include <limits.h>
@@ -19,6 +18,9 @@
 #include <ftw.h>
 #include <pwd.h> 
 #include <grp.h>  
+#include <fcntl.h>
+#include <dirent.h>
+// #include <sys/dir.h>
 
 
 void handle_user(int client_socket, const char *username, SessionState *state, char *stored_username) {
@@ -157,102 +159,6 @@ void handle_pasv(int client_socket, DataConnection *data_conn) {
     send_message(client_socket, response);
 }
 
-void handle_retr(int client_socket, const char *filename, DataConnection *data_conn) {
-
-    int data_socket = -1;
-    // Check if the data connection is established
-    if (data_conn->mode == MODE_NONE) {
-        send_message(client_socket, TRANSFER_NOT_ESTABLISHED);
-        return;
-    } else if (data_conn->mode == MODE_PORT){
-        data_socket = connect_client(data_conn);
-    } else if (data_conn->mode == MODE_PASV) {
-        data_socket = accept(data_conn->pasv_fd, NULL, NULL);
-        close (data_conn->pasv_fd);
-    }
-    data_conn->mode = MODE_NONE;
-
-    if (data_socket == -1) {
-        perror("data socket failed");
-        send_message(client_socket, TCP_NOT_ESTABLISHED);
-        return;
-    }
-
-    char filepath[BUFFER_SIZE];
-    if (filename == NULL) {
-        send_message(client_socket, SYNTAX_ERROR);
-        close(data_socket);
-        return;
-    } else if (!is_path_safe(filename)) {
-        send_message(client_socket, FILE_NOT_PERMITTED);
-        close(data_socket);
-        return;
-    } else {
-        if (filename[0] == '/') {
-            snprintf(filepath, sizeof(filepath), "%s%s", data_conn->root, filename);
-        } else {
-            snprintf(filepath, sizeof(filepath), "%s/%s", data_conn->current_dir, filename);
-        }
-    }
-
-    // Check if it is a regular file
-    struct stat file_stat;
-    if (stat(filepath, &file_stat) != 0 || !S_ISREG(file_stat.st_mode)) {
-        send_message(client_socket, FILE_NOT_EXIST); 
-        close(data_socket); 
-        data_conn->pasv_fd = -1;
-        return;
-    }
-
-    // Open the file in binary mode
-    int file_fd = open(filepath, O_RDONLY);
-    if (file_fd < 0) {
-        if (errno == ENOENT) {
-            send_message(client_socket, FILE_NOT_EXIST);
-        } else if (errno == EACCES) {
-            send_message(client_socket, FILE_NOT_PERMITTED);
-        } else {
-            send_message(client_socket, DISK_ISSUE);
-        }
-        close(data_socket); // Close the data socket if the file cannot be opened
-        data_conn->pasv_fd = -1;
-        return;
-    }
-
-    // Send initial response indicating the server is ready to send the file
-    char response[BUFFER_SIZE];
-    snprintf(response, sizeof(response), FILE_STATUS_OK, filename);
-    send_message(client_socket, response);
-
-    // Attempt to resume transmission if applicable
-    off_t offset = data_conn->last_sent_byte;
-
-    // ensure the offset bigger than filesize
-    if ((ssize_t)(get_file_size(filepath) - offset) < 0) {
-        send_message(client_socket, TRANSFER_ABORTED);
-    } else {
-        lseek(file_fd, offset, SEEK_SET); // Move to the last sent byte
-        ssize_t bytes_sent = send_file(data_socket, file_fd, (ssize_t)(get_file_size(filepath) - offset), TRANSFER_SPEED);
-        // Check for errors during sending
-        if (bytes_sent < 0) {
-            if (errno == EPIPE || errno == ECONNRESET) {
-                send_message(client_socket, TCP_BROKEN);
-            } else {
-                send_message(client_socket, ACTION_ABORTED);
-            }
-        } else {
-            // Successfully sent the file
-            send_message(client_socket, TRANSFER_COMPLETE);
-        }
-    }
-
-    close(file_fd);
-    close(data_socket);
-    data_conn->pasv_fd = -1;  // Reset the data socket
-    data_conn->last_sent_byte = 0;
-
-}
-
 void handle_rest(int client_socket, const char *offset_str, DataConnection *data_conn) {
     if (offset_str == NULL) {
         send_message(client_socket, SYNTAX_ERROR);
@@ -284,32 +190,108 @@ void handle_rest(int client_socket, const char *offset_str, DataConnection *data
     send_message(client_socket, response);
 }
 
-void handle_stor(int client_socket, const char *filepath, DataConnection *data_conn) {
-    int data_socket = -1;
-    
-    // Check if the data connection is established
-    if (data_conn->mode == MODE_NONE) {
-        send_message(client_socket, TRANSFER_NOT_ESTABLISHED);
+void file_transfer(int client_socket, const char *command, const char *arg, DataConnection *data_conn) {
+    pid_t pid = fork();
+    if (pid < 0) {
+        perror("Fork failed");
+        send_message(client_socket, ACTION_ABORTED);
         return;
-    } else if (data_conn->mode == MODE_PORT) {
-        data_socket = connect_client(data_conn);
-    } else if (data_conn->mode == MODE_PASV) {
-        data_socket = accept(data_conn->pasv_fd, NULL, NULL);
-        close(data_conn->pasv_fd);
     }
+    if (pid == 0) {
+        int data_socket = setup_data_connection(data_conn);
 
+        if (data_socket < 0) {
+            perror("data socket failed");
+            send_message(client_socket, TCP_NOT_ESTABLISHED);
+            exit(EXIT_FAILURE);
+        }
+        if ((strcmp(command, "RETR") == 0)) handle_retr(client_socket, data_socket, arg, data_conn);
+        else if ((strcmp(command, "STOR") == 0)) handle_stor(client_socket, data_socket, arg, data_conn);
+        else if ((strcmp(command, "APPE") == 0)) handle_appe(client_socket, data_socket, arg, data_conn);
+        else if ((strcmp(command, "LIST") == 0)) handle_list(client_socket, data_socket, arg, data_conn);
+        close(data_socket);
+        exit(EXIT_SUCCESS);
+    }
     data_conn->mode = MODE_NONE;
+    data_conn->pasv_fd = -1;
+    data_conn->ip_address[0] = '\0';
+    data_conn->port_port = -1;
+    data_conn->last_sent_byte = 0;
+}
 
-    if (data_socket == -1) {
-        perror("data socket failed");
-        send_message(client_socket, TCP_NOT_ESTABLISHED);
+void handle_retr(int client_socket, int data_socket, const char *filename, DataConnection *data_conn) {
+
+    char filepath[BUFFER_SIZE];
+    if (filename == NULL) {
+        send_message(client_socket, SYNTAX_ERROR);
+        return;
+    } else if (!is_path_safe(filename)) {
+        send_message(client_socket, FILE_NOT_PERMITTED);
+        return;
+    } else {
+        if (filename[0] == '/') {
+            snprintf(filepath, sizeof(filepath), "%s%s", data_conn->root, filename);
+        } else {
+            snprintf(filepath, sizeof(filepath), "%s/%s", data_conn->current_dir, filename);
+        }
+    }
+
+    // Check if it is a regular file
+    struct stat file_stat;
+    if (stat(filepath, &file_stat) != 0 || !S_ISREG(file_stat.st_mode)) {
+        send_message(client_socket, FILE_NOT_EXIST); 
         return;
     }
 
+    // Open the file in binary mode
+    int file_fd = open(filepath, O_RDONLY);
+    if (file_fd < 0) {
+        if (errno == ENOENT) {
+            send_message(client_socket, FILE_NOT_EXIST);
+        } else if (errno == EACCES) {
+            send_message(client_socket, FILE_NOT_PERMITTED);
+        } else {
+            send_message(client_socket, DISK_ISSUE);
+        }
+        return;
+    }
+    
+    // Send initial response indicating the server is ready to send the file
+    char response[BUFFER_SIZE];
+    snprintf(response, sizeof(response), FILE_STATUS_OK, filename);
+    send_message(client_socket, response);
+
+    // Attempt to resume transmission if applicable
+    off_t offset = data_conn->last_sent_byte;
+
+    // ensure the offset bigger than filesize
+    if ((ssize_t)(get_file_size(filepath) - offset) < 0) {
+        send_message(client_socket, TRANSFER_ABORTED);
+    } else {
+        lseek(file_fd, offset, SEEK_SET); // Move to the last sent byte
+        ssize_t bytes_sent = send_file(data_socket, file_fd, (ssize_t)(get_file_size(filepath) - offset), TRANSFER_SPEED);
+        // Check for errors during sending
+        if (bytes_sent < 0) {
+            if (errno == EPIPE || errno == ECONNRESET) {
+                send_message(client_socket, TCP_BROKEN);
+            } else {
+                send_message(client_socket, ACTION_ABORTED);
+            }
+        } else {
+            // Successfully sent the file
+            send_message(client_socket, TRANSFER_COMPLETE);
+        }
+    }
+
+    close(file_fd);
+    return;
+}
+
+void handle_stor(int client_socket, int data_socket, const char *filepath, DataConnection *data_conn) {
+    
     char filename[BUFFER_SIZE];
     if (filepath == NULL) {
         send_message(client_socket, SYNTAX_ERROR);
-        close(data_socket);
         return;
     } else {
         char *last_slash = strrchr(filepath, '/');
@@ -324,7 +306,6 @@ void handle_stor(int client_socket, const char *filepath, DataConnection *data_c
 
     if (!is_path_safe(filename)) {
         send_message(client_socket, FILE_NOT_PERMITTED);
-        close(data_socket);
         return; 
     }
     
@@ -332,15 +313,13 @@ void handle_stor(int client_socket, const char *filepath, DataConnection *data_c
     snprintf(fullpath, sizeof(fullpath), "%s/%s", data_conn->current_dir, filename);
 
     // Open the file for writing
-    int file_fd = open(fullpath, O_WRONLY | O_CREAT | O_TRUNC, 0644); //check
+    int file_fd = open(fullpath, O_WRONLY | O_CREAT | O_TRUNC, 0644); 
     if (file_fd < 0) {
         if (errno == EACCES) {
             send_message(client_socket, FILE_NOT_PERMITTED);
         } else {
             send_message(client_socket, DISK_ISSUE);
         }
-        close(data_socket);
-        data_conn->pasv_fd = -1;
         return;
     }
 
@@ -360,37 +339,14 @@ void handle_stor(int client_socket, const char *filepath, DataConnection *data_c
     }
 
     close(file_fd);
-    close(data_socket);
-    data_conn->pasv_fd = -1;
 
 }
 
-void handle_appe(int client_socket, const char *filepath, DataConnection *data_conn) {
-    int data_socket = -1;
-    
-    // Check if the data connection is established
-    if (data_conn->mode == MODE_NONE) {
-        send_message(client_socket, TRANSFER_NOT_ESTABLISHED);
-        return;
-    } else if (data_conn->mode == MODE_PORT) {
-        data_socket = connect_client(data_conn);
-    } else if (data_conn->mode == MODE_PASV) {
-        data_socket = accept(data_conn->pasv_fd, NULL, NULL);
-        close(data_conn->pasv_fd);
-    }
-
-    data_conn->mode = MODE_NONE;
-
-    if (data_socket == -1) {
-        perror("data socket failed");
-        send_message(client_socket, TCP_NOT_ESTABLISHED);
-        return;
-    }
+void handle_appe(int client_socket, int data_socket, const char *filepath, DataConnection *data_conn) {
 
     char filename[BUFFER_SIZE];
     if (filepath == NULL) {
         send_message(client_socket, SYNTAX_ERROR);
-        close(data_socket);
         return;
     } else {
         char *last_slash = strrchr(filepath, '/');
@@ -405,7 +361,6 @@ void handle_appe(int client_socket, const char *filepath, DataConnection *data_c
 
     if (!is_path_safe(filename)) {
         send_message(client_socket, FILE_NOT_PERMITTED);
-        close(data_socket);
         return; 
     }
     
@@ -420,8 +375,6 @@ void handle_appe(int client_socket, const char *filepath, DataConnection *data_c
         } else {
             send_message(client_socket, DISK_ISSUE);
         }
-        close(data_socket);
-        data_conn->pasv_fd = -1;
         return;
     }
 
@@ -441,13 +394,10 @@ void handle_appe(int client_socket, const char *filepath, DataConnection *data_c
     }
 
     close(file_fd);
-    close(data_socket);
-    data_conn->pasv_fd = -1;
     return;
 }
 
-void handle_list(int client_socket, const char *path, DataConnection *data_conn) {
-    int data_socket = -1;
+void handle_list(int client_socket, int data_socket, const char *path, DataConnection *data_conn) {
     char full_path[BUFFER_SIZE];
     char resolved_path[BUFFER_SIZE];
     DIR *dir;
@@ -457,25 +407,6 @@ void handle_list(int client_socket, const char *path, DataConnection *data_conn)
     char file_path[BUFFER_SIZE];
     char time_str[20];
     char permissions[11];
-
-    // Check if the data connection is established
-    if (data_conn->mode == MODE_NONE) {
-        send_message(client_socket, TRANSFER_NOT_ESTABLISHED);
-        return;
-    } else if (data_conn->mode == MODE_PORT) {
-        data_socket = connect_client(data_conn);
-    } else if (data_conn->mode == MODE_PASV) {
-        data_socket = accept(data_conn->pasv_fd, NULL, NULL);
-        close(data_conn->pasv_fd);
-    }
-
-    data_conn->mode = MODE_NONE;
-
-    if (data_socket == -1) {
-        perror("data socket failed");
-        send_message(client_socket, TCP_NOT_ESTABLISHED);
-        return;
-    }
 
     // Construct the full path
     if (path == NULL || strlen(path) == 0) {
@@ -489,14 +420,12 @@ void handle_list(int client_socket, const char *path, DataConnection *data_conn)
     // Resolve the path (remove ".." and "." components)
     if (realpath(full_path, resolved_path) == NULL) {
         send_message(client_socket, ACTION_ABORTED);
-        close(data_socket);
         return;
     }
 
     // Check if the path is within the root directory
     if (strncmp(resolved_path, data_conn->root, strlen(data_conn->root)) != 0) {
         send_message(client_socket, ACTION_ABORTED);
-        close(data_socket);
         return;
     }
 
@@ -511,7 +440,6 @@ void handle_list(int client_socket, const char *path, DataConnection *data_conn)
             dir = opendir(resolved_path);
             if (dir == NULL) {
                 send_message(client_socket, ACTION_ABORTED);
-                close(data_socket);
                 return;
             }
             // Read and send directory entries
@@ -552,8 +480,6 @@ void handle_list(int client_socket, const char *path, DataConnection *data_conn)
                             send_message(client_socket, ACTION_ABORTED);
                         }
                         closedir(dir);
-                        close(data_socket);
-                        data_conn->pasv_fd = -1;
                         return;
                     }                    
                 }
@@ -595,20 +521,14 @@ void handle_list(int client_socket, const char *path, DataConnection *data_conn)
                 } else {
                     send_message(client_socket, ACTION_ABORTED);
                 }
-                close(data_socket);
-                data_conn->pasv_fd = -1;
                 return;
             }
         }
 
     } else {
         send_message(client_socket, ACTION_ABORTED);
-        close(data_socket);
         return;
     }
-    
-    close(data_socket);
-    data_conn->pasv_fd = -1;
     send_message(client_socket, TRANSFER_COMPLETE);
 
 }
