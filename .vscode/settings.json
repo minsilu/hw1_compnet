@@ -6,6 +6,7 @@
         "commands.h": "c",
         "fcntl.h": "c",
         "errno.h": "c",
-        "config.h": "c"
+        "config.h": "c",
+        "stdio.h": "c"
     }
 }

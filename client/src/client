@@ -1,16 +1,7 @@
 #!/usr/bin/env python3
-import sys
+
 from session import FTPClient  
-import socket
-import os
-import sys
 import argparse
-import random
-from datetime import datetime
-import time
-import re
-import fnmatch
-import threading
 from utils import *
 from concurrent.futures import ThreadPoolExecutor
                
@@ -23,21 +14,21 @@ def main():
     client = FTPClient(args.ip, args.port)
     client.connect()
     
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=7) as executor:
         while True:
             command = input().strip() ## "ftp> "
             verb = command.split(' ', 1)[0]
             if verb in client.command_map:
                 verb = client.command_map[verb]  # cd, pwd, rmdir, delete, mkdir #P
     
-            if verb in ['USER','PASS','SYST','PWD','QUIT','ABOR']: #P
+            if verb in ['USER','PASS','SYST','PWD','QUIT','ABOR']: 
                 client.send_command(command)
-            elif verb in['MKD','CWD','RMD','DELE','REST','TYPE']: #P
+            elif verb in['MKD','CWD','RMD','DELE','REST','TYPE']: 
                 if (check_parameter(command)):
                     client.send_command_with_params(verb, command.split(' ', 1)[1])
-            elif verb == 'PASV': #P
+            elif verb == 'PASV': 
                 client.passive_mode()
-            elif verb == 'PORT': #P
+            elif verb == 'PORT': 
                 if check_parameter(command):
                     if len(command.split(' ', 1)[1].split(',')) == 6:
                         parts = command.split(' ', 1)[1].split(',')
@@ -46,23 +37,26 @@ def main():
                         client.active_mode(ip, port)
                     else:
                         print('Please input like "PORT 127,0,0,1,54,54"')
-            elif verb == 'RETR':  #P
+            elif verb == 'RETR':  
                 if check_parameter(command):
-                    executor.submit(client.retrieve_file, command.split(' ', 1)[1])
-                    #client.retrieve_file(command.split(' ', 1)[1])
-            elif verb == 'STOR': #P
+                    #executor.submit(client.retrieve_file, command.split(' ', 1)[1])
+                    client.retrieve_file(command.split(' ', 1)[1])
+            elif verb == 'STOR': 
                 if check_parameter(command):
-                    executor.submit(client.store_file, command.split(' ', 1)[1])
-            elif verb == 'LIST': ##P
-                executor.submit(client.list_files)
-            elif verb == 'APPE': #P
+                    #executor.submit(client.store_file, command.split(' ', 1)[1])
+                    client.store_file(command.split(' ', 1)[1])
+            elif verb == 'LIST': 
+                #executor.submit(client.list_files)
+                client.list_files()
+            elif verb == 'APPE': 
                 if check_parameter(command):
-                    executor.submit(client.append_file, command.split(' ', 1)[1])
-            elif verb == 'quit' or verb == 'bye': #P
+                    #executor.submit(client.append_file, command.split(' ', 1)[1])
+                    client.append_file(command.split(' ', 1)[1])
+            elif verb == 'quit' or verb == 'bye': 
                 break
-            elif verb == 'close':  #P
+            elif verb == 'close':  
                 client.close_connection()
-            elif verb == 'open':  #P
+            elif verb == 'open':  
                 if check_parameter(command):
                     if check_parameter(command.split(' ', 1)[1]):
                         params = command.split(' ', 1)[1].split(' ')
@@ -70,16 +64,16 @@ def main():
                             client.open_connection(params[0], int(params[1]))
                         else:
                             print('Please input legitmate ip and port like "open 127.0.0.1 21"')      
-            elif verb == 'lcd': #P
+            elif verb == 'lcd': 
                 if check_parameter(command):
                     client.change_local_directory(command.split(' ', 1)[1])
-            elif verb == 'lpwd': #P
+            elif verb == 'lpwd': 
                 client.show_local_path()
-            elif verb == 'lls':# p
+            elif verb == 'lls':
                 client.ls_local_files()
-            elif verb == 'ls': #P
+            elif verb == 'ls': 
                 client.ls_remote_files(get_sencond_parameter(command))
-            elif verb ==  'get': #p
+            elif verb ==  'get': 
                 if check_parameter(command):
                     executor.submit(client.get_remote_file, command.split(' ', 1)[1].split(' ')[0], local_path = get_sencond_parameter(command.split(' ', 1)[1]))
             elif verb == 'put':
@@ -91,15 +85,15 @@ def main():
             elif verb == 'reput':
                 if check_parameter(command):
                     executor.submit(client.reput_local_file, command.split(' ', 1)[1])
-            elif verb == 'mget': #p
+            elif verb == 'mget': 
                 if check_parameter(command):
                     executor.submit(client.mget_remote_file, command.split(' ', 1)[1])
             elif verb == 'mput': 
                 if check_parameter(command):
                     executor.submit(client.mput_local_file, command.split(' ', 1)[1])
-            elif verb == 'help':     #p
+            elif verb == 'help':     
                 client.show_help(get_sencond_parameter(command))
-            elif verb == 'login':    #p 
+            elif verb == 'login':   
                 if len(command.split(' ', 1))>1:
                     if len(command.split(' ', 1)[1].split(' '))>1:
                         client.login(command.split(' ', 1)[1].split(' ')[0], command.split(' ', 1)[1].split(' ')[1])
@@ -111,4 +105,4 @@ def main():
                 client.log(f"Error: Invalid command: {command}")
         
 if __name__ == "__main__":
-    main()  # Call the main function of your client
+    main()  

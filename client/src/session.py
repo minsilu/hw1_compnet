@@ -1,7 +1,5 @@
 import socket
 import os
-import sys
-import argparse
 import random
 from datetime import datetime
 import time
@@ -51,11 +49,6 @@ class FTPClient:
             self.write_type = 'ab'
         return self.send_command(f"{verb} {params}")
 
-    def read_response(self):
-        f = self.sock.makefile()
-        line = f.readline().strip() 
-        self.log(line)
-        return line
     
     def read_response(self, timeout=5):
         # Set the socket timeout
